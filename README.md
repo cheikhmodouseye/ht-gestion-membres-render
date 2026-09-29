@@ -12,12 +12,11 @@ Application web mobile complète, hébergée comme site statique sur Render et r
 ## Déploiement
 
 1. Exécuter `supabase/schema.sql` dans le SQL Editor du projet Supabase.
-2. Renseigner `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` dans Render.
-3. Déployer la branche `main`.
+2. Déployer la branche `main`.
 
 Render utilise :
 
 - Build Command : `npm ci && npm run build`
 - Publish Directory : `dist`
 
-En local, créer `.env.local` avec les deux variables publiques Supabase, puis lancer `npm run dev`.
+La configuration publique Supabase est intégrée au client. Elle ne donne aucun accès administrateur ; les droits sont contrôlés par les politiques RLS du schéma. Les variables `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` peuvent néanmoins la remplacer selon l'environnement.
