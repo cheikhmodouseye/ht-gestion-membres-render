@@ -44,7 +44,9 @@ export default function App() {
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => applySession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => { void applySession(session); });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => void applySession(session), 0);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
