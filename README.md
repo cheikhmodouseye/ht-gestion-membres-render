@@ -12,7 +12,10 @@ Application web mobile complète, hébergée comme site statique sur Render et r
 ## Déploiement
 
 1. Exécuter `supabase/schema.sql` dans le SQL Editor du projet Supabase.
-2. Déployer la branche `main`.
+2. Exécuter `supabase/role_permissions.sql` pour activer les quatre rôles applicatifs.
+3. Désactiver les nouvelles inscriptions dans **Authentication > Sign In / Providers**.
+4. Créer les comptes dans **Authentication > Users**, puis renseigner leur rôle dans `public.profiles`.
+5. Déployer la branche `main`.
 
 Render utilise :
 
@@ -20,3 +23,5 @@ Render utilise :
 - Publish Directory : `dist`
 
 La configuration publique Supabase est intégrée au client. Elle ne donne aucun accès administrateur ; les droits sont contrôlés par les politiques RLS du schéma. Les variables `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` peuvent néanmoins la remplacer selon l'environnement.
+
+Rôles disponibles : `admin`, `administratif`, `social` et `surveillant_kourel`.
