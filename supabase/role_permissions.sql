@@ -130,4 +130,4 @@ with check (public.current_user_role() in ('admin', 'social'));
 
 -- Après avoir créé les quatre comptes dans Authentication > Users, attribuer les rôles :
 -- insert into public.profiles (id, full_name, role)
--- select id, 'Nom administrateur', 'admin' from auth.users where email = 'admin@exemple.com';
+-- select id, 'Administrateur', 'admin' from auth.users where email = 'admin@ht-gestion.app';

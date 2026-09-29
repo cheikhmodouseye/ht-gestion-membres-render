@@ -14,7 +14,7 @@ Application web mobile complète, hébergée comme site statique sur Render et r
 1. Exécuter `supabase/schema.sql` dans le SQL Editor du projet Supabase.
 2. Exécuter `supabase/role_permissions.sql` pour activer les quatre rôles applicatifs.
 3. Désactiver les nouvelles inscriptions dans **Authentication > Sign In / Providers**.
-4. Créer les comptes dans **Authentication > Users**, puis renseigner leur rôle dans `public.profiles`.
+4. Créer les comptes dans **Authentication > Users** avec les adresses techniques `<identifiant>@ht-gestion.app`, puis renseigner leur rôle dans `public.profiles`. Les utilisateurs saisissent uniquement la partie `<identifiant>` dans l’application.
 5. Déployer la branche `main`.
 
 Render utilise :
