@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, BarChart3, CalendarCheck, ChevronLeft, Download, HeartHandshake, Menu, Plus, RefreshCw, Save, Trash2, Users, Wallet } from "lucide-react";
+import { Activity, BarChart3, CalendarCheck, ChevronLeft, Download, HeartHandshake, Menu, Plus, RefreshCw, Save, Trash2, UserCog, Users, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { loadData, mutateData, type AppData } from "@/lib/data";
 import { canManageDaara, canManageKourel, canManageMembers, canManageSocial, roleLabels, type UserRole } from "@/lib/roles";
+import { supabase } from "@/lib/supabase";
 
 declare global {
   interface Document {
@@ -19,7 +20,8 @@ declare global {
   }
 }
 
-type View = "dashboard" | "members" | "activities" | "social" | "reports";
+type View = "dashboard" | "members" | "activities" | "social" | "reports" | "accounts";
+type Account = { id: string; identifier: string; fullName: string; role: UserRole; createdAt: string; isCurrent: boolean };
 type Data = AppData;
 const emptyData: Data = { members: [], renewals: [], activities: [], attendance: [], contributions: [], socialEvents: [], cashMovements: [] };
 const today = new Date().toISOString().slice(0, 10);
@@ -48,21 +50,57 @@ export default function SharedApp({ user, onSignOut }: { user: { id: string; nam
     if (canManageSocial(user.role)) register({ name: "record_monthly_contribution", title: "Enregistrer une cotisation", description: "Enregistre ou annule la cotisation sociale mensuelle de 1 000 FCFA pour un membre.", inputSchema: { type: "object", properties: { memberId: { type: "string" }, month: { type: "string", pattern: "^[0-9]{4}-[0-9]{2}$" }, paid: { type: "boolean" } }, required: ["memberId", "month", "paid"], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute: async (input: any) => { if (!data.members.some(m => m.id === input.memberId)) throw new Error("Membre introuvable"); const ok = await mutate({ action: "toggleContribution", memberId: input.memberId, month: input.month, paid: input.paid }, input.paid ? "Cotisation enregistrée" : "Cotisation annulée"); if (!ok) throw new Error("Échec de l'enregistrement"); return { ok: true, memberId: input.memberId, month: input.month, amount: input.paid ? 1000 : 0 }; } });
     return () => lifecycle.abort();
   }, [user, data]);
-  const title = { dashboard: "Tableau de bord", members: "Membres", activities: "Activités et présences", social: "Gestion sociale", reports: "Statistiques" }[view];
+  const title = { dashboard: "Tableau de bord", members: "Membres", activities: "Activités et présences", social: "Gestion sociale", reports: "Statistiques", accounts: "Comptes utilisateurs" }[view];
   const nav = [
     { key: "dashboard" as View, Icon: Activity, label: "Tableau de bord", show: true },
     { key: "members" as View, Icon: Users, label: "Membres", show: canManageMembers(user.role) },
     { key: "activities" as View, Icon: CalendarCheck, label: "Activités", show: canManageDaara(user.role) || canManageKourel(user.role) },
     { key: "social" as View, Icon: HeartHandshake, label: "Social", show: canManageSocial(user.role) },
     { key: "reports" as View, Icon: BarChart3, label: "Statistiques", show: user.role !== "social" },
+    { key: "accounts" as View, Icon: UserCog, label: "Comptes utilisateurs", show: user.role === "admin" },
   ].filter(item => item.show);
-  return <div className="app-shell"><aside className={`app-sidebar ${menuOpen ? "open" : ""}`}><div className="brand-lockup"><img src="/logo-ht.jpg" alt="Logo Hizbut-Tarqiyyah" /><div><strong>HT Gestion</strong><small>des membres</small></div></div><nav>{nav.map(({ key, Icon, label }) => <button key={key} className={view === key ? "active" : ""} onClick={() => { setView(key); setMenuOpen(false); }}><Icon />{label}</button>)}</nav><div className="account-card"><strong>{user.name}</strong><span>{roleLabels[user.role]} · {user.identifier}</span><button type="button" onClick={onSignOut}>Se déconnecter</button></div></aside>{menuOpen && <button className="menu-backdrop" aria-label="Fermer le menu" onClick={() => setMenuOpen(false)} />}<main className="app-main"><header className="app-header"><Button variant="outline" size="icon" className="mobile-menu" onClick={() => setMenuOpen(true)}><Menu /></Button><div><p>HT Gestion des membres</p><h1>{title}</h1></div><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /><span className="desktop-only">Actualiser</span></Button></header>{message && <div className="app-message">{message}</div>}<div className="app-content">{loading ? <Loading /> : view === "dashboard" ? <Dashboard data={data} setView={setView} role={user.role} /> : view === "members" && canManageMembers(user.role) ? <MembersView data={data} mutate={mutate} busy={busy} /> : view === "activities" && (canManageDaara(user.role) || canManageKourel(user.role)) ? <ActivitiesView data={data} mutate={mutate} busy={busy} role={user.role} /> : view === "social" && canManageSocial(user.role) ? <SocialView data={data} mutate={mutate} busy={busy} /> : view === "reports" && user.role !== "social" ? <ReportsView data={data} /> : <Dashboard data={data} setView={setView} role={user.role} />}</div></main></div>;
+  return <div className="app-shell"><aside className={`app-sidebar ${menuOpen ? "open" : ""}`}><div className="brand-lockup"><img src="/logo-ht.jpg" alt="Logo Hizbut-Tarqiyyah" /><div><strong>HT Gestion</strong><small>des membres</small></div></div><nav>{nav.map(({ key, Icon, label }) => <button key={key} className={view === key ? "active" : ""} onClick={() => { setView(key); setMenuOpen(false); }}><Icon />{label}</button>)}</nav><div className="account-card"><strong>{user.name}</strong><span>{roleLabels[user.role]} · {user.identifier}</span><button type="button" onClick={onSignOut}>Se déconnecter</button></div></aside>{menuOpen && <button className="menu-backdrop" aria-label="Fermer le menu" onClick={() => setMenuOpen(false)} />}<main className="app-main"><header className="app-header"><Button variant="outline" size="icon" className="mobile-menu" onClick={() => setMenuOpen(true)}><Menu /></Button><div><p>HT Gestion des membres</p><h1>{title}</h1></div>{view !== "accounts" && <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /><span className="desktop-only">Actualiser</span></Button>}</header>{message && <div className="app-message">{message}</div>}<div className="app-content">{loading ? <Loading /> : view === "dashboard" ? <Dashboard data={data} setView={setView} role={user.role} /> : view === "members" && canManageMembers(user.role) ? <MembersView data={data} mutate={mutate} busy={busy} /> : view === "activities" && (canManageDaara(user.role) || canManageKourel(user.role)) ? <ActivitiesView data={data} mutate={mutate} busy={busy} role={user.role} /> : view === "social" && canManageSocial(user.role) ? <SocialView data={data} mutate={mutate} busy={busy} /> : view === "reports" && user.role !== "social" ? <ReportsView data={data} /> : view === "accounts" && user.role === "admin" ? <AccountsView /> : <Dashboard data={data} setView={setView} role={user.role} />}</div></main></div>;
 }
 function Loading() { return <div className="loading-card"><RefreshCw className="animate-spin" /><p>Chargement des données partagées...</p></div>; }
 function Panel({ title, action, children }: any) { return <section className="panel"><header><h2>{title}</h2>{action}</header><div className="panel-body">{children}</div></section>; }
 function Metric({ label, value, detail, danger }: any) { return <article className={`metric ${danger ? "danger" : ""}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>; }
 function Quick({ icon: Icon, title, text, onClick }: any) { return <button className="quick-card" onClick={onClick}><span><Icon /></span><strong>{title}</strong><small>{text}</small></button>; }
 function Empty({ text }: { text: string }) { return <div className="empty-state">{text}</div>; }
+
+async function manageAccounts(action: string, payload: Record<string, unknown> = {}) {
+  const { data, error } = await supabase.functions.invoke("admin-users", { body: { action, ...payload } });
+  if (error) {
+    let message = data?.error || error.message;
+    const response = (error as any).context;
+    if (response instanceof Response) {
+      try { message = (await response.json())?.error || message; } catch { /* Keep the generic network error. */ }
+    }
+    throw new Error(message);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+function AccountsView() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Account | null>(null);
+  async function loadAccounts() { setLoading(true); setMessage(""); try { const result = await manageAccounts("list"); setAccounts(result.users || []); } catch (error) { setMessage(error instanceof Error ? error.message : "Erreur de chargement"); } finally { setLoading(false); } }
+  useEffect(() => { void loadAccounts(); }, []);
+  function start(account?: Account) { setEditing(account || null); setOpen(true); }
+  async function submit(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setMessage(""); const form = new FormData(event.currentTarget); try { await manageAccounts(editing ? "update" : "create", { id: editing?.id, identifier: form.get("identifier"), fullName: form.get("fullName"), role: form.get("role"), password: form.get("password") }); setMessage(editing ? "Compte actualisé." : "Compte créé."); setOpen(false); await loadAccounts(); } catch (error) { setMessage(error instanceof Error ? error.message : "Erreur d’enregistrement"); } finally { setBusy(false); } }
+  async function remove(account: Account) { if (!confirm(`Supprimer définitivement le compte ${account.identifier} ?`)) return; setBusy(true); setMessage(""); try { await manageAccounts("delete", { id: account.id }); setMessage("Compte supprimé."); await loadAccounts(); } catch (error) { setMessage(error instanceof Error ? error.message : "Erreur de suppression"); } finally { setBusy(false); } }
+  const roleOptions = Object.entries(roleLabels).map(([value, label]) => ({ value, label }));
+  return <Panel title="Gestion des comptes" action={<Button onClick={() => start()}><Plus />Créer un compte</Button>}>
+    <p className="panel-intro">Créez les identifiants, attribuez les rôles et réinitialisez les mots de passe. Les adresses techniques restent invisibles aux utilisateurs.</p>
+    {message && <div className="app-message inline-message">{message}</div>}
+    {loading ? <Loading /> : <div className="account-list">{accounts.map(account => <article className="account-line" key={account.id}><div className="member-avatar"><UserCog /></div><div className="member-main"><strong>{account.fullName || account.identifier}</strong><span>@{account.identifier} · {roleLabels[account.role] || "Rôle non attribué"}</span></div><div className="row-actions"><Button variant="outline" size="sm" onClick={() => start(account)}>Modifier</Button><Button variant="ghost" size="icon" aria-label={`Supprimer ${account.identifier}`} disabled={account.isCurrent || busy} onClick={() => void remove(account)}><Trash2 /></Button></div></article>)}</div>}
+    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{editing ? "Modifier le compte" : "Créer un compte"}</DialogTitle></DialogHeader><form className="form-grid" onSubmit={submit}><Field name="identifier" label="Identifiant" value={editing?.identifier} required readOnly={Boolean(editing)} minLength={3} /><Field name="fullName" label="Nom affiché" value={editing?.fullName} required /><SelectField name="role" label="Rôle et accès" value={editing?.role || "administratif"} options={roleOptions} optionObjects required /><Field name="password" label={editing ? "Nouveau mot de passe (facultatif)" : "Mot de passe"} type="password" required={!editing} minLength={8} autoComplete="new-password" /><Button className="wide" type="submit" disabled={busy}><Save />{editing ? "Enregistrer les modifications" : "Créer le compte"}</Button></form></DialogContent></Dialog>
+  </Panel>;
+}
 function ageFrom(date: string) { if (!date) return "-"; const birth = new Date(date); const now = new Date(); let age = now.getFullYear() - birth.getFullYear(); if (now < new Date(now.getFullYear(), birth.getMonth(), birth.getDate())) age--; return age; }
 function memberName(member: any) { return member ? `${member.prenom} ${member.nom}` : "Membre supprimé"; }
 function Field({ label, wide, value, ...props }: any) { return <label className={wide ? "field wide" : "field"}><span>{label}</span><Input defaultValue={value || ""} {...props} /></label>; }
