@@ -28,13 +28,16 @@ Deno.serve(async (request) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const authorization = request.headers.get("Authorization") || "";
     const token = authorization.replace(/^Bearer\s+/i, "");
-    const authClient = createClient(supabaseUrl, anonKey);
+    const authClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authorization } },
+      auth: { persistSession: false },
+    });
     const adminClient = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
     const { data: authData, error: authError } = await authClient.auth.getUser(token);
     if (authError || !authData.user) return response({ error: "Session invalide." }, 401);
 
     const callerId = authData.user.id;
-    const { data: caller } = await adminClient.from("profiles").select("role").eq("id", callerId).maybeSingle();
+    const { data: caller } = await authClient.from("profiles").select("role").eq("id", callerId).maybeSingle();
     if (caller?.role !== "admin") return response({ error: "Accès réservé à l’administrateur." }, 403);
 
     const body = await request.json();
@@ -43,7 +46,7 @@ Deno.serve(async (request) => {
     if (action === "list") {
       const { data, error } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
       if (error) throw error;
-      const { data: profiles, error: profileError } = await adminClient.from("profiles").select("id, full_name, role");
+      const { data: profiles, error: profileError } = await authClient.from("profiles").select("id, full_name, role");
       if (profileError) throw profileError;
       const byId = new Map((profiles || []).map((profile) => [profile.id, profile]));
       return response({
@@ -77,7 +80,7 @@ Deno.serve(async (request) => {
         email_confirm: true,
       });
       if (error) return response({ error: error.message.includes("registered") ? "Cet identifiant existe déjà." : error.message }, 400);
-      const { error: profileError } = await adminClient.from("profiles").insert({ id: data.user.id, full_name: fullName, role });
+      const { error: profileError } = await authClient.from("profiles").insert({ id: data.user.id, full_name: fullName, role });
       if (profileError) {
         await adminClient.auth.admin.deleteUser(data.user.id);
         throw profileError;
@@ -92,7 +95,7 @@ Deno.serve(async (request) => {
       const password = String(body.password || "");
       if (!roles.includes(role)) return response({ error: "Rôle invalide." }, 400);
       if (id === callerId && role !== "admin") return response({ error: "Vous ne pouvez pas retirer votre propre rôle administrateur." }, 400);
-      const { error: profileError } = await adminClient.from("profiles").update({ full_name: fullName, role, updated_at: new Date().toISOString() }).eq("id", id);
+      const { error: profileError } = await authClient.from("profiles").update({ full_name: fullName, role, updated_at: new Date().toISOString() }).eq("id", id);
       if (profileError) throw profileError;
       if (password) {
         if (password.length < 8) return response({ error: "Le mot de passe doit contenir au moins 8 caractères." }, 400);
@@ -112,6 +115,7 @@ Deno.serve(async (request) => {
 
     return response({ error: "Action inconnue." }, 400);
   } catch (error) {
-    return response({ error: error instanceof Error ? error.message : "Erreur du serveur." }, 500);
+    const message = error instanceof Error ? error.message : (error as { message?: string })?.message;
+    return response({ error: message || "Erreur du serveur." }, 500);
   }
 });
