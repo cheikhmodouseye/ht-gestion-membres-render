@@ -1,32 +1,23 @@
-# HT Gestion des membres - version Render
+# HT Gestion des membres - Render + Supabase
 
-Cette copie est prête pour un déploiement en tant que site statique sur Render.
+Application web mobile complète, hébergée comme site statique sur Render et reliée à une base Supabase centralisée.
 
 ## Fonctionnement
 
-- Aucun compte utilisateur n'est requis.
-- Les données sont enregistrées dans le navigateur avec `localStorage`.
-- Les données ne sont pas partagées entre les téléphones.
-- La version principale avec base centralisée reste séparée et privée.
+- Comptes utilisateurs Supabase par e-mail et mot de passe.
+- Données partagées entre tous les téléphones autorisés.
+- Membres, renouvellements annuels, activités, présences, social, caisse et statistiques.
+- Accès aux tables protégé par Row Level Security.
 
-## Déploiement avec le Blueprint
+## Déploiement
 
-1. Placer ce dossier dans un dépôt GitHub ou GitLab.
-2. Dans Render, choisir **New > Blueprint**.
-3. Connecter le dépôt contenant `render.yaml`.
-4. Valider la création du service `ht-gestion-membres`.
+1. Exécuter `supabase/schema.sql` dans le SQL Editor du projet Supabase.
+2. Renseigner `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` dans Render.
+3. Déployer la branche `main`.
 
-Render utilisera automatiquement :
+Render utilise :
 
-- Type : `Static Site`
-- Build Command : `echo "Static site ready"`
+- Build Command : `npm ci && npm run build`
 - Publish Directory : `dist`
 
-## Déploiement manuel
-
-Créer un **Static Site** dans Render avec les paramètres suivants :
-
-- Build Command : `echo "Static site ready"`
-- Publish Directory : `dist`
-
-Le fichier `render.yaml` active également les aperçus de pull request, les en-têtes de sécurité et la réécriture des routes vers `index.html`.
+En local, créer `.env.local` avec les deux variables publiques Supabase, puis lancer `npm run dev`.
