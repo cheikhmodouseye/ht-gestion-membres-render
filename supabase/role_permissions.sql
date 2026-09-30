@@ -80,7 +80,11 @@ drop policy if exists "activities_insert" on public.activities;
 drop policy if exists "activities_update" on public.activities;
 drop policy if exists "activities_delete" on public.activities;
 create policy "activities_read" on public.activities for select to authenticated
-using (public.current_user_role() in ('admin', 'administratif', 'surveillant_kourel'));
+using (
+  public.current_user_role() = 'admin'
+  or (public.current_user_role() = 'administratif' and scope = 'general')
+  or (public.current_user_role() = 'surveillant_kourel' and scope = 'kourel')
+);
 create policy "activities_insert" on public.activities for insert to authenticated
 with check (
   public.current_user_role() = 'admin'
@@ -108,7 +112,7 @@ using (
 drop policy if exists "attendance_read" on public.attendance;
 drop policy if exists "attendance_write" on public.attendance;
 create policy "attendance_read" on public.attendance for select to authenticated
-using (public.current_user_role() in ('admin', 'administratif', 'surveillant_kourel'));
+using (public.can_manage_activity(activity_id));
 create policy "attendance_write" on public.attendance for all to authenticated
 using (public.can_manage_activity(activity_id))
 with check (public.can_manage_activity(activity_id));
