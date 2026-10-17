@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
 import type { UserRole } from "@/lib/roles";
 
-type Profile = { role: UserRole; full_name: string };
+type Profile = { role: UserRole; full_name: string; zone: string; kourel: string };
 
 const loginDomain = "ht-gestion.app";
 
@@ -23,6 +23,8 @@ function userInfo(user: User, profile: Profile) {
     identifier: user.email?.split("@")[0] || "utilisateur",
     name: profile.full_name || user.email?.split("@")[0] || "Utilisateur",
     role: profile.role,
+    zone: profile.zone,
+    kourel: profile.kourel,
   };
 }
 
@@ -36,7 +38,7 @@ export default function App() {
     setUser(nextUser);
     setProfile(null);
     if (nextUser) {
-      const { data } = await supabase.from("profiles").select("role, full_name").eq("id", nextUser.id).maybeSingle();
+      const { data } = await supabase.from("profiles").select("role, full_name, zone, kourel").eq("id", nextUser.id).maybeSingle();
       if (data) setProfile(data as Profile);
     }
     setChecking(false);
@@ -53,7 +55,7 @@ export default function App() {
   if (checking) return <main className="signin"><LoaderCircle className="animate-spin" /></main>;
   if (!user) return <AuthScreen />;
   if (!profile) return <UnauthorizedScreen onSignOut={() => void supabase.auth.signOut()} />;
-  return <SharedApp user={userInfo(user, profile)} onSignOut={() => void supabase.auth.signOut()} />;
+  return <SharedApp key={`${user.id}:${profile.role}:${profile.zone}:${profile.kourel}`} user={userInfo(user, profile)} onSignOut={() => void supabase.auth.signOut()} />;
 }
 
 function AuthScreen() {

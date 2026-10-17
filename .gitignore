@@ -3,3 +3,6 @@ node_modules/
 .env.local
 .env.*.local
 *.tsbuildinfo
+.deploy/
+ovh-dist/
+ht-gestion-membres-ovh.zip

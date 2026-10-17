@@ -46,7 +46,7 @@ Deno.serve(async (request) => {
     if (action === "list") {
       const { data, error } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
       if (error) throw error;
-      const { data: profiles, error: profileError } = await authClient.from("profiles").select("id, full_name, role");
+      const { data: profiles, error: profileError } = await authClient.from("profiles").select("id, full_name, role, zone, kourel");
       if (profileError) throw profileError;
       const byId = new Map((profiles || []).map((profile) => [profile.id, profile]));
       return response({
@@ -59,11 +59,20 @@ Deno.serve(async (request) => {
               identifier: user.email!.split("@")[0],
               fullName: profile?.full_name || "",
               role: profile?.role || "",
+              zone: profile?.zone || "", kourel: profile?.kourel || "",
               createdAt: user.created_at,
               isCurrent: user.id === callerId,
             };
           }),
       });
+    }
+
+    let assignment = { zone: "", kourel: "" };
+    if (action === "create" || action === "update") {
+      assignment = { zone: body.role === "administratif" ? String(body.zone || "").trim() : "", kourel: body.role === "surveillant_kourel" ? String(body.kourel || "").trim() : "" };
+      if (body.role === "administratif" && !assignment.zone) return response({ error: "Zone obligatoire." }, 400);
+      if (body.role === "surveillant_kourel" && !["Nourou Dareyni", "Mafatikhoul Bisri", "Adolescent"].includes(assignment.kourel)) return response({ error: "Kourel obligatoire et valide." }, 400);
+      if (body.password && String(body.password).length < 8) return response({ error: "Le mot de passe doit contenir au moins 8 caractères." }, 400);
     }
 
     if (action === "create") {
@@ -80,7 +89,7 @@ Deno.serve(async (request) => {
         email_confirm: true,
       });
       if (error) return response({ error: error.message.includes("registered") ? "Cet identifiant existe déjà." : error.message }, 400);
-      const { error: profileError } = await authClient.from("profiles").insert({ id: data.user.id, full_name: fullName, role });
+      const { error: profileError } = await authClient.from("profiles").insert({ id: data.user.id, full_name: fullName, role, ...assignment });
       if (profileError) {
         await adminClient.auth.admin.deleteUser(data.user.id);
         throw profileError;
@@ -95,7 +104,7 @@ Deno.serve(async (request) => {
       const password = String(body.password || "");
       if (!roles.includes(role)) return response({ error: "Rôle invalide." }, 400);
       if (id === callerId && role !== "admin") return response({ error: "Vous ne pouvez pas retirer votre propre rôle administrateur." }, 400);
-      const { error: profileError } = await authClient.from("profiles").update({ full_name: fullName, role, updated_at: new Date().toISOString() }).eq("id", id);
+      const { error: profileError } = await authClient.from("profiles").update({ full_name: fullName, role, ...assignment, updated_at: new Date().toISOString() }).eq("id", id);
       if (profileError) throw profileError;
       if (password) {
         if (password.length < 8) return response({ error: "Le mot de passe doit contenir au moins 8 caractères." }, 400);

@@ -42,7 +42,7 @@ export async function mutateData(body: any, userId: string) {
     const item = body.member || {};
     if (!item.matricule?.trim() || !item.nom?.trim() || !item.prenom?.trim()) throw new Error("Matricule, nom et prénom obligatoires.");
     const id = item.id || crypto.randomUUID();
-    const member = { id, matricule: item.matricule.trim(), nom: item.nom.trim(), prenom: item.prenom.trim(), sexe: item.sexe || "", birth_date: item.birthDate || "", address: item.address || "", phone: item.phone || "", email: item.email || "", profession: item.profession || "", daara_sector: item.daaraSector || "", magal_sector: item.magalSector || "", cultural_space: item.culturalSpace || "", kourel: item.kourel || "", registration_date: item.registrationDate || now.slice(0, 10), ...base(userId) };
+    const member = { id, zone: String(item.zone || "").trim(), matricule: item.matricule.trim(), nom: item.nom.trim(), prenom: item.prenom.trim(), sexe: item.sexe || "", birth_date: item.birthDate || "", address: item.address || "", phone: item.phone || "", email: item.email || "", profession: item.profession || "", daara_sector: item.daaraSector || "", magal_sector: item.magalSector || "", cultural_space: item.culturalSpace || "", kourel: item.kourel || "", registration_date: item.registrationDate || now.slice(0, 10), ...base(userId) };
     const saved = await supabase.from("members").upsert(member, { onConflict: "id" });
     if (saved.error) throw saved.error;
     if (body.renewal?.year) {
@@ -56,16 +56,9 @@ export async function mutateData(body: any, userId: string) {
     const item = body.activity || {};
     if (!item.type || !item.date) throw new Error("Type et date obligatoires.");
     const id = item.id || crypto.randomUUID();
-    const activity = { id, type: item.type, scope: item.scope || "general", kourel: item.kourel || "Tous", date: item.date, start_time: item.startTime || "", end_time: item.endTime || "", place: item.place || "", event_name: item.eventName || "", cultural_space: item.culturalSpace || "", melodies: item.melodies || [], ...base(userId) };
-    const saved = await supabase.from("activities").upsert(activity, { onConflict: "id" });
-    if (saved.error) throw saved.error;
-    const cleared = await supabase.from("attendance").delete().eq("activity_id", id);
-    if (cleared.error) throw cleared.error;
-    const attendance = Object.entries(body.attendance || {}).map(([memberId, status]) => ({ id: crypto.randomUUID(), activity_id: id, member_id: memberId, status: String(status), updated_by: userId, updated_at: now }));
-    if (attendance.length) {
-      const result = await supabase.from("attendance").insert(attendance);
-      if (result.error) throw result.error;
-    }
+    const activity = { id, zone: String(item.zone || "").trim(), type: item.type, scope: item.scope || "general", kourel: item.kourel || "Tous", date: item.date, start_time: item.startTime || "", end_time: item.endTime || "", place: item.place || "", event_name: item.eventName || "", cultural_space: item.culturalSpace || "", melodies: item.melodies || [], ...base(userId) };
+    const { error } = await supabase.rpc("save_scoped_activity", { item: activity, records: body.attendance || {} });
+    if (error) throw error;
     return;
   }
   if (body.action === "toggleContribution") {
@@ -79,6 +72,34 @@ export async function mutateData(body: any, userId: string) {
       const contribution = { id: crypto.randomUUID(), member_id: memberId, month, amount: 1000, paid_date: body.paidDate || now.slice(0, 10), ...base(userId) };
       const result = await supabase.from("social_contributions").upsert(contribution, { onConflict: "member_id,month" });
       if (result.error) throw result.error;
+    }
+    return;
+  }
+  if (body.action === "saveContributions") {
+    const month = String(body.month || "");
+    const memberIds = [...new Set((body.memberIds || []).map((id: unknown) => String(id)).filter(Boolean))];
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("Mois invalide.");
+
+    const existing = await supabase.from("social_contributions").select("id,member_id").eq("month", month);
+    if (existing.error) throw existing.error;
+
+    const selected = new Set(memberIds);
+    const contributionIdsToDelete = (existing.data || [])
+      .filter((item) => !selected.has(item.member_id))
+      .map((item) => item.id);
+    if (contributionIdsToDelete.length) {
+      const removed = await supabase.from("social_contributions").delete().in("id", contributionIdsToDelete);
+      if (removed.error) throw removed.error;
+    }
+
+    if (memberIds.length) {
+      const paidDate = body.paidDate || now.slice(0, 10);
+      const contributions = memberIds.map((memberId) => ({
+        id: crypto.randomUUID(), member_id: memberId, month, amount: 1000,
+        paid_date: paidDate, ...base(userId),
+      }));
+      const saved = await supabase.from("social_contributions").upsert(contributions, { onConflict: "member_id,month" });
+      if (saved.error) throw saved.error;
     }
     return;
   }
