@@ -6,6 +6,8 @@ import { createSession, destroySession, hashPassword, publicUser, requireUser, v
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const roles = new Set(["admin", "administratif", "social", "surveillant_kourel"]);
+const zones = new Set(["Diakhaye", "Keur Massar centre", "Tivaoune Peulh-Apix", "Yeumbeul-Malika"]);
+const culturalSpaces = new Set(["ECH", "ECF1", "ECF2", "ECE"]);
 const loginAttempts = new Map();
 
 app.disable("x-powered-by");
@@ -27,12 +29,17 @@ function normalizedIdentifier(value) {
   return identifier;
 }
 
+function normalizedChoice(value, choices, label, required = false) {
+  const choice = String(value || "").trim();
+  if ((required && !choice) || (choice && !choices.has(choice))) fail(400, `${label} invalide.`);
+  return choice;
+}
+
 function assignments(role, source = {}) {
   const result = {
-    zone: role === "administratif" ? String(source.zone || "").trim() : "",
+    zone: role === "administratif" ? normalizedChoice(source.zone, zones, "Zone", true) : "",
     kourel: role === "surveillant_kourel" ? String(source.kourel || "").trim() : "",
   };
-  if (role === "administratif" && !result.zone) fail(400, "La zone est obligatoire pour ce rôle.");
   if (role === "surveillant_kourel" && !result.kourel) fail(400, "Le kourel est obligatoire pour ce rôle.");
   return result;
 }
@@ -133,7 +140,8 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     const item = body.member || {};
     if (!String(item.matricule || "").trim() || !String(item.nom || "").trim() || !String(item.prenom || "").trim()) fail(400, "Matricule, nom et prénom obligatoires.");
     const id = item.id || randomUUID();
-    const zone = user.role === "administratif" ? user.zone : String(item.zone || "").trim();
+    const zone = normalizedChoice(user.role === "administratif" ? user.zone : item.zone, zones, "Zone", true);
+    const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
     if (user.role === "administratif" && !zone) fail(403, "Aucune zone attribuée.");
     if (item.id && user.role === "administratif") {
       const current = await pool.query("select zone from members where id = $1", [id]);
@@ -144,7 +152,7 @@ app.post("/api/mutate", requireUser, async (request, response) => {
         `insert into members (id,zone,matricule,nom,prenom,sexe,birth_date,address,phone,email,profession,daara_sector,magal_sector,cultural_space,kourel,registration_date,created_by,updated_at)
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          on conflict (id) do update set zone=excluded.zone,matricule=excluded.matricule,nom=excluded.nom,prenom=excluded.prenom,sexe=excluded.sexe,birth_date=excluded.birth_date,address=excluded.address,phone=excluded.phone,email=excluded.email,profession=excluded.profession,daara_sector=excluded.daara_sector,magal_sector=excluded.magal_sector,cultural_space=excluded.cultural_space,kourel=excluded.kourel,registration_date=excluded.registration_date,updated_at=excluded.updated_at`,
-        [id, zone, String(item.matricule).trim(), String(item.nom).trim(), String(item.prenom).trim(), item.sexe || "", item.birthDate || "", item.address || "", item.phone || "", item.email || "", item.profession || "", item.daaraSector || "", item.magalSector || "", item.culturalSpace || "", item.kourel || "", item.registrationDate || now.slice(0, 10), user.id, now],
+        [id, zone, String(item.matricule).trim(), String(item.nom).trim(), String(item.prenom).trim(), item.sexe || "", item.birthDate || "", item.address || "", item.phone || "", item.email || "", item.profession || "", item.daaraSector || "", item.magalSector || "", culturalSpace, item.kourel || "", item.registrationDate || now.slice(0, 10), user.id, now],
       );
       if (body.renewal?.year) {
         await client.query(
@@ -165,14 +173,15 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     if (user.role === "administratif" && scope !== "general") fail(403, "Activité non autorisée.");
     if (user.role === "surveillant_kourel" && scope !== "kourel") fail(403, "Activité non autorisée.");
     const id = item.id || randomUUID();
-    const zone = user.role === "administratif" ? user.zone : String(item.zone || "").trim();
+    const zone = scope === "general" ? normalizedChoice(user.role === "administratif" ? user.zone : item.zone, zones, "Zone", true) : "";
     const kourel = user.role === "surveillant_kourel" ? user.kourel : item.kourel || "Tous";
+    const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
     await transaction(async (client) => {
       await client.query(
         `insert into activities (id,zone,type,scope,kourel,date,start_time,end_time,place,event_name,cultural_space,melodies,created_by,updated_at)
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          on conflict (id) do update set zone=excluded.zone,type=excluded.type,scope=excluded.scope,kourel=excluded.kourel,date=excluded.date,start_time=excluded.start_time,end_time=excluded.end_time,place=excluded.place,event_name=excluded.event_name,cultural_space=excluded.cultural_space,melodies=excluded.melodies,updated_at=excluded.updated_at`,
-        [id, zone, item.type, scope, kourel, item.date, item.startTime || "", item.endTime || "", item.place || "", item.eventName || "", item.culturalSpace || "", JSON.stringify(item.melodies || []), user.id, now],
+        [id, zone, item.type, scope, kourel, item.date, item.startTime || "", item.endTime || "", item.place || "", item.eventName || "", culturalSpace, JSON.stringify(item.melodies || []), user.id, now],
       );
       await client.query("delete from attendance where activity_id = $1", [id]);
       for (const [memberId, status] of Object.entries(body.attendance || {})) {
