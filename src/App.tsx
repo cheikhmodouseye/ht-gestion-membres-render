@@ -7,10 +7,12 @@ import { apiRequest } from "@/lib/api";
 import type { UserRole } from "@/lib/roles";
 
 type AppUser = { id: string; identifier: string; name: string; role: UserRole; zone: string; kourel: string };
+const inactivityTimeoutMs = 5 * 60 * 1000;
 
 export default function App() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [checking, setChecking] = useState(true);
+  const [authMessage, setAuthMessage] = useState("");
 
   useEffect(() => {
     void apiRequest<{ user: AppUser }>("/api/auth/me")
@@ -19,19 +21,44 @@ export default function App() {
       .finally(() => setChecking(false));
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+
+    let timer: ReturnType<typeof setTimeout>;
+    const expireSession = () => {
+      setAuthMessage("Session fermée après 5 minutes d’inactivité.");
+      setUser(null);
+      void apiRequest("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    };
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(expireSession, inactivityTimeoutMs);
+    };
+    const activityEvents = ["pointerdown", "keydown", "scroll", "touchstart", "mousemove"];
+
+    activityEvents.forEach((event) => window.addEventListener(event, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      clearTimeout(timer);
+      activityEvents.forEach((event) => window.removeEventListener(event, resetTimer));
+    };
+  }, [user]);
+
   async function signOut() {
     await apiRequest("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    setAuthMessage("");
     setUser(null);
   }
 
   if (checking) return <main className="signin"><LoaderCircle className="animate-spin" /></main>;
-  if (!user) return <AuthScreen onAuthenticated={setUser} />;
+  if (!user) return <AuthScreen message={authMessage} onAuthenticated={(authenticatedUser) => { setAuthMessage(""); setUser(authenticatedUser); }} />;
   return <SharedApp key={`${user.id}:${user.role}:${user.zone}:${user.kourel}`} user={user} onSignOut={() => void signOut()} />;
 }
 
-function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AppUser) => void }) {
+function AuthScreen({ message: initialMessage, onAuthenticated }: { message: string; onAuthenticated: (user: AppUser) => void }) {
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(initialMessage);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
