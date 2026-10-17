@@ -7,7 +7,8 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const roles = new Set(["admin", "administratif", "social", "surveillant_kourel"]);
 const zones = new Set(["Diakhaye", "Keur Massar centre", "Tivaoune Peulh-Apix", "Yeumbeul-Malika"]);
-const culturalSpaces = new Set(["ECH", "ECF1", "ECF2", "ECE"]);
+const kourels = new Set(["Nourou Dareyni", "Mafatikhoul Bisri", "Adolescent", "Dialibatou Marakhib"]);
+const culturalSpaces = new Set(["ECH1", "ECH2", "ECF1", "ECF2", "ECA"]);
 const loginAttempts = new Map();
 
 app.disable("x-powered-by");
@@ -38,9 +39,8 @@ function normalizedChoice(value, choices, label, required = false) {
 function assignments(role, source = {}) {
   const result = {
     zone: role === "administratif" ? normalizedChoice(source.zone, zones, "Zone", true) : "",
-    kourel: role === "surveillant_kourel" ? String(source.kourel || "").trim() : "",
+    kourel: role === "surveillant_kourel" ? normalizedChoice(source.kourel, kourels, "Kourel", true) : "",
   };
-  if (role === "surveillant_kourel" && !result.kourel) fail(400, "Le kourel est obligatoire pour ce rôle.");
   return result;
 }
 
@@ -142,6 +142,7 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     const id = item.id || randomUUID();
     const zone = normalizedChoice(user.role === "administratif" ? user.zone : item.zone, zones, "Zone", true);
     const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
+    const kourel = normalizedChoice(item.kourel, kourels, "Kourel");
     if (user.role === "administratif" && !zone) fail(403, "Aucune zone attribuée.");
     if (item.id && user.role === "administratif") {
       const current = await pool.query("select zone from members where id = $1", [id]);
@@ -152,7 +153,7 @@ app.post("/api/mutate", requireUser, async (request, response) => {
         `insert into members (id,zone,matricule,nom,prenom,sexe,birth_date,address,phone,phone2,email,profession,daara_sector,magal_sector,cultural_space,kourel,registration_date,created_by,updated_at)
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          on conflict (id) do update set zone=excluded.zone,matricule=excluded.matricule,nom=excluded.nom,prenom=excluded.prenom,sexe=excluded.sexe,birth_date=excluded.birth_date,address=excluded.address,phone=excluded.phone,phone2=excluded.phone2,email=excluded.email,profession=excluded.profession,daara_sector=excluded.daara_sector,magal_sector=excluded.magal_sector,cultural_space=excluded.cultural_space,kourel=excluded.kourel,registration_date=excluded.registration_date,updated_at=excluded.updated_at`,
-        [id, zone, String(item.matricule).trim(), String(item.nom).trim(), String(item.prenom).trim(), item.sexe || "", item.birthDate || "", item.address || "", item.phone || "", item.phone2 || "", item.email || "", item.profession || "", item.daaraSector || "", item.magalSector || "", culturalSpace, item.kourel || "", item.registrationDate || now.slice(0, 10), user.id, now],
+        [id, zone, String(item.matricule).trim(), String(item.nom).trim(), String(item.prenom).trim(), item.sexe || "", item.birthDate || "", item.address || "", item.phone || "", item.phone2 || "", item.email || "", item.profession || "", item.daaraSector || "", item.magalSector || "", culturalSpace, kourel, item.registrationDate || now.slice(0, 10), user.id, now],
       );
       if (body.renewal?.year) {
         await client.query(
@@ -174,7 +175,7 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     if (user.role === "surveillant_kourel" && scope !== "kourel") fail(403, "Activité non autorisée.");
     const id = item.id || randomUUID();
     const zone = scope === "general" ? normalizedChoice(user.role === "administratif" ? user.zone : item.zone, zones, "Zone", true) : "";
-    const kourel = user.role === "surveillant_kourel" ? user.kourel : item.kourel || "Tous";
+    const kourel = scope === "kourel" ? normalizedChoice(user.role === "surveillant_kourel" ? user.kourel : item.kourel, kourels, "Kourel", true) : "Tous";
     const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
     await transaction(async (client) => {
       await client.query(

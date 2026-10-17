@@ -28,9 +28,9 @@ const emptyData: Data = { members: [], renewals: [], activities: [], attendance:
 const today = new Date().toISOString().slice(0, 10);
 const currentMonth = today.slice(0, 7);
 const currentYear = Number(today.slice(0, 4));
-const kourels = ["Nourou Dareyni", "Mafatikhoul Bisri", "Adolescent"];
+const kourels = ["Nourou Dareyni", "Mafatikhoul Bisri", "Adolescent", "Dialibatou Marakhib"];
 const zones = ["Diakhaye", "Keur Massar centre", "Tivaoune Peulh-Apix", "Yeumbeul-Malika"];
-const spaces = ["ECH", "ECF1", "ECF2", "ECE"];
+const spaces = ["ECH1", "ECH2", "ECF1", "ECF2", "ECA"];
 const statusLabels: Record<string, string> = { present: "Présent", late: "Présent en retard", absent: "Absent", justified: "Absent justifié" };
 
 export default function SharedApp({ user, onSignOut }: { user: { id: string; name: string; identifier: string; role: UserRole; zone: string; kourel: string }; onSignOut: () => void }) {
