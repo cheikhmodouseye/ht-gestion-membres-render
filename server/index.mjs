@@ -149,10 +149,10 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     }
     await transaction(async (client) => {
       await client.query(
-        `insert into members (id,zone,matricule,nom,prenom,sexe,birth_date,address,phone,email,profession,daara_sector,magal_sector,cultural_space,kourel,registration_date,created_by,updated_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-         on conflict (id) do update set zone=excluded.zone,matricule=excluded.matricule,nom=excluded.nom,prenom=excluded.prenom,sexe=excluded.sexe,birth_date=excluded.birth_date,address=excluded.address,phone=excluded.phone,email=excluded.email,profession=excluded.profession,daara_sector=excluded.daara_sector,magal_sector=excluded.magal_sector,cultural_space=excluded.cultural_space,kourel=excluded.kourel,registration_date=excluded.registration_date,updated_at=excluded.updated_at`,
-        [id, zone, String(item.matricule).trim(), String(item.nom).trim(), String(item.prenom).trim(), item.sexe || "", item.birthDate || "", item.address || "", item.phone || "", item.email || "", item.profession || "", item.daaraSector || "", item.magalSector || "", culturalSpace, item.kourel || "", item.registrationDate || now.slice(0, 10), user.id, now],
+        `insert into members (id,zone,matricule,nom,prenom,sexe,birth_date,address,phone,phone2,email,profession,daara_sector,magal_sector,cultural_space,kourel,registration_date,created_by,updated_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         on conflict (id) do update set zone=excluded.zone,matricule=excluded.matricule,nom=excluded.nom,prenom=excluded.prenom,sexe=excluded.sexe,birth_date=excluded.birth_date,address=excluded.address,phone=excluded.phone,phone2=excluded.phone2,email=excluded.email,profession=excluded.profession,daara_sector=excluded.daara_sector,magal_sector=excluded.magal_sector,cultural_space=excluded.cultural_space,kourel=excluded.kourel,registration_date=excluded.registration_date,updated_at=excluded.updated_at`,
+        [id, zone, String(item.matricule).trim(), String(item.nom).trim(), String(item.prenom).trim(), item.sexe || "", item.birthDate || "", item.address || "", item.phone || "", item.phone2 || "", item.email || "", item.profession || "", item.daaraSector || "", item.magalSector || "", culturalSpace, item.kourel || "", item.registrationDate || now.slice(0, 10), user.id, now],
       );
       if (body.renewal?.year) {
         await client.query(

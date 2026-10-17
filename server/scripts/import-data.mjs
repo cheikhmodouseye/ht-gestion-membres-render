@@ -29,7 +29,7 @@ async function upsert(client, table, columns, conflict, rows) {
 await transaction(async (client) => {
   await upsert(client, "members", [
     ["id", "id"], ["zone", "zone", ""], ["matricule", "matricule"], ["nom", "nom"], ["prenom", "prenom"],
-    ["sexe", "sexe", ""], ["birth_date", "birthDate", ""], ["address", "address", ""], ["phone", "phone", ""],
+    ["sexe", "sexe", ""], ["birth_date", "birthDate", ""], ["address", "address", ""], ["phone", "phone", ""], ["phone2", "phone2", ""],
     ["email", "email", ""], ["profession", "profession", ""], ["daara_sector", "daaraSector", ""],
     ["magal_sector", "magalSector", ""], ["cultural_space", "culturalSpace", ""], ["kourel", "kourel", ""],
     ["registration_date", "registrationDate", now.slice(0, 10)], ["created_by", "createdBy", "migration"],
