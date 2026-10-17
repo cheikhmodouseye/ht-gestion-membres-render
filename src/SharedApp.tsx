@@ -11,9 +11,9 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { loadData, mutateData, type AppData } from "@/lib/data";
+import { apiRequest } from "@/lib/api";
 import { canManageDaara, canManageKourel, canManageMembers, canManageSocial, roleLabels, type UserRole } from "@/lib/roles";
 import { canSeeMember, canSeeActivity, attendanceForRoster } from "@/lib/scope";
-import { supabase } from "@/lib/supabase";
 
 declare global {
   interface Document {
@@ -69,17 +69,7 @@ function Quick({ icon: Icon, title, text, onClick }: any) { return <button class
 function Empty({ text }: { text: string }) { return <div className="empty-state">{text}</div>; }
 
 async function manageAccounts(action: string, payload: Record<string, unknown> = {}) {
-  const { data, error } = await supabase.functions.invoke("admin-users", { body: { action, ...payload } });
-  if (error) {
-    let message = data?.error || error.message;
-    const response = (error as any).context;
-    if (response instanceof Response) {
-      try { message = (await response.json())?.error || message; } catch { /* Keep the generic network error. */ }
-    }
-    throw new Error(message);
-  }
-  if (data?.error) throw new Error(data.error);
-  return data;
+  return apiRequest<any>("/api/admin/users", { method: "POST", body: JSON.stringify({ action, ...payload }) });
 }
 
 function AccountsView() {
