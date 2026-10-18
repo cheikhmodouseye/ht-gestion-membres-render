@@ -59,15 +59,14 @@ function camelRows(table, rows = []) {
 }
 
 function canSeeMember(user, member) {
-  if (user.role === "admin" || user.role === "social") return true;
-  if (user.role === "administratif") return Boolean(user.zone) && member.zone === user.zone;
+  if (user.role === "admin" || user.role === "social" || user.role === "administratif") return true;
   if (user.role === "surveillant_kourel") return Boolean(user.kourel) && member.kourel === user.kourel;
   return false;
 }
 
 function canSeeActivity(user, activity) {
   if (user.role === "admin") return true;
-  if (user.role === "administratif") return Boolean(user.zone) && activity.scope === "general" && activity.zone === user.zone;
+  if (user.role === "administratif") return activity.scope === "general";
   if (user.role === "surveillant_kourel") return Boolean(user.kourel) && activity.scope === "kourel" && activity.kourel === user.kourel;
   return false;
 }
@@ -140,14 +139,9 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     const item = body.member || {};
     if (!String(item.matricule || "").trim() || !String(item.nom || "").trim() || !String(item.prenom || "").trim()) fail(400, "Matricule, nom et prénom obligatoires.");
     const id = item.id || randomUUID();
-    const zone = normalizedChoice(user.role === "administratif" ? user.zone : item.zone, zones, "Zone", true);
+    const zone = normalizedChoice(item.zone, zones, "Zone", true);
     const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
     const kourel = normalizedChoice(item.kourel, kourels, "Kourel");
-    if (user.role === "administratif" && !zone) fail(403, "Aucune zone attribuée.");
-    if (item.id && user.role === "administratif") {
-      const current = await pool.query("select zone from members where id = $1", [id]);
-      if (current.rows[0]?.zone !== user.zone) fail(403, "Membre hors de votre zone.");
-    }
     await transaction(async (client) => {
       await client.query(
         `insert into members (id,zone,matricule,nom,prenom,sexe,birth_date,address,phone,phone2,email,profession,daara_sector,magal_sector,cultural_space,kourel,registration_date,created_by,updated_at)
@@ -174,7 +168,7 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     if (user.role === "administratif" && scope !== "general") fail(403, "Activité non autorisée.");
     if (user.role === "surveillant_kourel" && scope !== "kourel") fail(403, "Activité non autorisée.");
     const id = item.id || randomUUID();
-    const zone = scope === "general" ? normalizedChoice(user.role === "administratif" ? user.zone : item.zone, zones, "Zone", true) : "";
+    const zone = scope === "general" ? normalizedChoice(item.zone, zones, "Zone", true) : "";
     const kourel = scope === "kourel" ? normalizedChoice(user.role === "surveillant_kourel" ? user.kourel : item.kourel, kourels, "Kourel", true) : "Tous";
     const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
     await transaction(async (client) => {
@@ -238,10 +232,6 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     if (!target) fail(400, "Entité inconnue.");
     allowed(user.role, target[1]);
     const id = String(body.id || "");
-    if (target[0] === "members" && user.role === "administratif") {
-      const record = await pool.query("select zone from members where id = $1", [id]);
-      if (record.rows[0]?.zone !== user.zone) fail(403, "Membre hors de votre zone.");
-    }
     if (target[0] === "activities" && user.role !== "admin") {
       const record = await pool.query("select * from activities where id = $1", [id]);
       if (!record.rowCount || !canSeeActivity(user, record.rows[0])) fail(403, "Activité hors de votre affectation.");
