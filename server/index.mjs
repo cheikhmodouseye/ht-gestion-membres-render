@@ -211,10 +211,18 @@ app.post("/api/mutate", requireUser, async (request, response) => {
   if (body.action === "addSocialEvent") {
     allowed(user.role, ["admin", "social"]);
     const item = body.event || {};
+    const memberId = String(item.memberId || "");
+    const type = String(item.type || "");
+    const date = String(item.date || "");
+    const expenseAmount = Number(item.expenseAmount || 0);
+    if (!(await pool.query("select 1 from members where id = $1", [memberId])).rowCount) fail(400, "Sélectionnez le membre concerné.");
+    if (!["Baptême", "Mariage", "Décès", "Décès d'un proche"].includes(type)) fail(400, "Nature de l'évènement invalide.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail(400, "Date de l'évènement invalide.");
+    if (!Number.isFinite(expenseAmount) || expenseAmount < 0) fail(400, "Montant remis invalide.");
     const id = randomUUID();
     await transaction(async (client) => {
-      await client.query("insert into social_events (id,member_id,type,date,expense_amount,kourel_performance,note,created_by,updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)", [id, item.memberId, item.type, item.date, Number(item.expenseAmount || 0), Boolean(item.kourelPerformance), item.note || "", user.id, now]);
-      if (Number(item.expenseAmount || 0) > 0) await client.query("insert into cash_movements (id,type,date,label,amount,social_event_id,created_by,updated_at) values ($1,'expense',$2,$3,$4,$5,$6,$7)", [randomUUID(), item.date, `${item.type} - aide sociale`, Number(item.expenseAmount), id, user.id, now]);
+      await client.query("insert into social_events (id,member_id,type,date,expense_amount,kourel_performance,note,created_by,updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)", [id, memberId, type, date, expenseAmount, Boolean(item.kourelPerformance), String(item.note || "").trim(), user.id, now]);
+      if (expenseAmount > 0) await client.query("insert into cash_movements (id,type,date,label,amount,social_event_id,created_by,updated_at) values ($1,'expense',$2,$3,$4,$5,$6,$7)", [randomUUID(), date, `${type} - aide sociale`, expenseAmount, id, user.id, now]);
     });
     return response.json({ ok: true });
   }
@@ -222,7 +230,15 @@ app.post("/api/mutate", requireUser, async (request, response) => {
   if (body.action === "addCashMovement") {
     allowed(user.role, ["admin", "social"]);
     const item = body.movement || {};
-    await pool.query("insert into cash_movements (id,type,date,label,amount,created_by,updated_at) values ($1,$2,$3,$4,$5,$6,$7)", [randomUUID(), item.type, item.date, item.label, Number(item.amount || 0), user.id, now]);
+    const type = String(item.type || "");
+    const date = String(item.date || "");
+    const label = String(item.label || "").trim();
+    const amount = Number(item.amount || 0);
+    if (!["income", "expense"].includes(type)) fail(400, "Type de mouvement invalide.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail(400, "Date du mouvement invalide.");
+    if (!label) fail(400, "Renseignez le libellé du mouvement.");
+    if (!Number.isFinite(amount) || amount <= 0) fail(400, "Le montant doit être supérieur à zéro.");
+    await pool.query("insert into cash_movements (id,type,date,label,amount,created_by,updated_at) values ($1,$2,$3,$4,$5,$6,$7)", [randomUUID(), type, date, label, amount, user.id, now]);
     return response.json({ ok: true });
   }
 
