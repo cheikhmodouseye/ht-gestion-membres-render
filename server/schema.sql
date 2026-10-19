@@ -25,12 +25,19 @@ create table if not exists members (
   id text primary key, zone text not null default '', matricule text not null unique,
   nom text not null, prenom text not null, sexe text not null default '', birth_date text not null default '',
   address text not null default '', phone text not null default '', phone2 text not null default '', email text not null default '',
+  emergency_contact_name text not null default '', emergency_contact_phone text not null default '',
+  is_student boolean not null default false, school_class text not null default '', arabic_education_level text not null default '',
   profession text not null default '', daara_sector text not null default '', magal_sector text not null default '',
   cultural_space text not null default '', kourel text not null default '', registration_date text not null,
   created_by text not null, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 
 alter table members add column if not exists phone2 text not null default '';
+alter table members add column if not exists emergency_contact_name text not null default '';
+alter table members add column if not exists emergency_contact_phone text not null default '';
+alter table members add column if not exists is_student boolean not null default false;
+alter table members add column if not exists school_class text not null default '';
+alter table members add column if not exists arabic_education_level text not null default '';
 
 create table if not exists renewals (
   id text primary key, member_id text not null references members(id) on delete cascade,

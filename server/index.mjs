@@ -47,7 +47,7 @@ function assignments(role, source = {}) {
 }
 
 const maps = {
-  members: { birth_date: "birthDate", daara_sector: "daaraSector", magal_sector: "magalSector", cultural_space: "culturalSpace", registration_date: "registrationDate", created_by: "createdBy", created_at: "createdAt", updated_at: "updatedAt" },
+  members: { birth_date: "birthDate", emergency_contact_name: "emergencyContactName", emergency_contact_phone: "emergencyContactPhone", is_student: "isStudent", school_class: "schoolClass", arabic_education_level: "arabicEducationLevel", daara_sector: "daaraSector", magal_sector: "magalSector", cultural_space: "culturalSpace", registration_date: "registrationDate", created_by: "createdBy", created_at: "createdAt", updated_at: "updatedAt" },
   renewals: { member_id: "memberId", renewal_date: "renewalDate", updated_by: "updatedBy", created_at: "createdAt", updated_at: "updatedAt" },
   activities: { start_time: "startTime", end_time: "endTime", event_name: "eventName", cultural_space: "culturalSpace", created_by: "createdBy", created_at: "createdAt", updated_at: "updatedAt" },
   attendance: { activity_id: "activityId", member_id: "memberId", updated_by: "updatedBy", created_at: "createdAt", updated_at: "updatedAt" },
@@ -140,16 +140,24 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     allowed(user.role, ["admin", "administratif"]);
     const item = body.member || {};
     if (!String(item.matricule || "").trim() || !String(item.nom || "").trim() || !String(item.prenom || "").trim()) fail(400, "Matricule, nom et prénom obligatoires.");
+    const emergencyContactName = String(item.emergencyContactName || "").trim();
+    const emergencyContactPhone = String(item.emergencyContactPhone || "").trim();
+    const isStudent = item.isStudent === true || item.isStudent === "true" || item.isStudent === "on";
+    const schoolClass = isStudent ? String(item.schoolClass || "").trim() : "";
+    const arabicEducationLevel = String(item.arabicEducationLevel || "").trim();
+    if (!emergencyContactName || !emergencyContactPhone) fail(400, "La personne à contacter en urgence et son téléphone sont obligatoires.");
+    if (isStudent && !schoolClass) fail(400, "La classe est obligatoire pour un élève.");
+    if (!arabicEducationLevel) fail(400, "Le niveau d'instruction en arabe est obligatoire.");
     const id = item.id || randomUUID();
     const zone = normalizedChoice(item.zone, zones, "Zone", true);
     const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
     const kourel = normalizedChoice(item.kourel, kourels, "Kourel");
     await transaction(async (client) => {
       await client.query(
-        `insert into members (id,zone,matricule,nom,prenom,sexe,birth_date,address,phone,phone2,email,profession,daara_sector,magal_sector,cultural_space,kourel,registration_date,created_by,updated_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-         on conflict (id) do update set zone=excluded.zone,matricule=excluded.matricule,nom=excluded.nom,prenom=excluded.prenom,sexe=excluded.sexe,birth_date=excluded.birth_date,address=excluded.address,phone=excluded.phone,phone2=excluded.phone2,email=excluded.email,profession=excluded.profession,daara_sector=excluded.daara_sector,magal_sector=excluded.magal_sector,cultural_space=excluded.cultural_space,kourel=excluded.kourel,registration_date=excluded.registration_date,updated_at=excluded.updated_at`,
-        [id, zone, String(item.matricule).trim(), String(item.nom).trim(), String(item.prenom).trim(), item.sexe || "", item.birthDate || "", item.address || "", item.phone || "", item.phone2 || "", item.email || "", item.profession || "", item.daaraSector || "", item.magalSector || "", culturalSpace, kourel, item.registrationDate || now.slice(0, 10), user.id, now],
+        `insert into members (id,zone,matricule,nom,prenom,sexe,birth_date,address,phone,phone2,email,emergency_contact_name,emergency_contact_phone,is_student,school_class,arabic_education_level,profession,daara_sector,magal_sector,cultural_space,kourel,registration_date,created_by,updated_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+         on conflict (id) do update set zone=excluded.zone,matricule=excluded.matricule,nom=excluded.nom,prenom=excluded.prenom,sexe=excluded.sexe,birth_date=excluded.birth_date,address=excluded.address,phone=excluded.phone,phone2=excluded.phone2,email=excluded.email,emergency_contact_name=excluded.emergency_contact_name,emergency_contact_phone=excluded.emergency_contact_phone,is_student=excluded.is_student,school_class=excluded.school_class,arabic_education_level=excluded.arabic_education_level,profession=excluded.profession,daara_sector=excluded.daara_sector,magal_sector=excluded.magal_sector,cultural_space=excluded.cultural_space,kourel=excluded.kourel,registration_date=excluded.registration_date,updated_at=excluded.updated_at`,
+        [id, zone, String(item.matricule).trim(), String(item.nom).trim(), String(item.prenom).trim(), item.sexe || "", item.birthDate || "", item.address || "", item.phone || "", item.phone2 || "", item.email || "", emergencyContactName, emergencyContactPhone, isStudent, schoolClass, arabicEducationLevel, item.profession || "", item.daaraSector || "", item.magalSector || "", culturalSpace, kourel, item.registrationDate || now.slice(0, 10), user.id, now],
       );
       if (body.renewal?.year) {
         await client.query(

@@ -30,7 +30,9 @@ await transaction(async (client) => {
   await upsert(client, "members", [
     ["id", "id"], ["zone", "zone", ""], ["matricule", "matricule"], ["nom", "nom"], ["prenom", "prenom"],
     ["sexe", "sexe", ""], ["birth_date", "birthDate", ""], ["address", "address", ""], ["phone", "phone", ""], ["phone2", "phone2", ""],
-    ["email", "email", ""], ["profession", "profession", ""], ["daara_sector", "daaraSector", ""],
+    ["email", "email", ""], ["emergency_contact_name", "emergencyContactName", ""], ["emergency_contact_phone", "emergencyContactPhone", ""],
+    ["is_student", "isStudent", false], ["school_class", "schoolClass", ""], ["arabic_education_level", "arabicEducationLevel", ""],
+    ["profession", "profession", ""], ["daara_sector", "daaraSector", ""],
     ["magal_sector", "magalSector", ""], ["cultural_space", "culturalSpace", ""], ["kourel", "kourel", ""],
     ["registration_date", "registrationDate", now.slice(0, 10)], ["created_by", "createdBy", "migration"],
     ["created_at", "createdAt", now], ["updated_at", "updatedAt", now],
