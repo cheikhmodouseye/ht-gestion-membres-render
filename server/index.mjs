@@ -9,6 +9,8 @@ const roles = new Set(["admin", "administratif", "social", "surveillant_kourel"]
 const zones = new Set(["Diakhaye", "Keur Massar centre", "Tivaoune Peulh-Apix", "Yeumbeul-Malika"]);
 const kourels = new Set(["Nourou Dareyni", "Mafatikhoul Bisri", "Adolescent", "Dialibatou Marakhib"]);
 const culturalSpaces = new Set(["ECH1", "ECH2", "ECF1", "ECF2", "ECA"]);
+const activityZones = new Set([...zones, "Toutes les zones"]);
+const activityCulturalSpaces = new Set([...culturalSpaces, "Tous les espaces"]);
 const loginAttempts = new Map();
 
 app.disable("x-powered-by");
@@ -169,9 +171,9 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     if (user.role === "administratif" && scope !== "general") fail(403, "Activité non autorisée.");
     if (user.role === "surveillant_kourel" && scope !== "kourel") fail(403, "Activité non autorisée.");
     const id = item.id || randomUUID();
-    const zone = scope === "general" ? normalizedChoice(item.zone, zones, "Zone", true) : "";
+    const zone = scope === "general" ? normalizedChoice(item.zone, activityZones, "Zone", true) : "";
     const kourel = scope === "kourel" ? normalizedChoice(user.role === "surveillant_kourel" ? user.kourel : item.kourel, kourels, "Kourel", true) : "Tous";
-    const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
+    const culturalSpace = scope === "general" ? normalizedChoice(item.culturalSpace, activityCulturalSpaces, "Espace culturel", true) : normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
     await transaction(async (client) => {
       await client.query(
         `insert into activities (id,zone,type,scope,kourel,date,start_time,end_time,place,event_name,cultural_space,melodies,observation,created_by,updated_at)
