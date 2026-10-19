@@ -145,9 +145,6 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     const isStudent = item.isStudent === true || item.isStudent === "true" || item.isStudent === "on";
     const schoolClass = isStudent ? String(item.schoolClass || "").trim() : "";
     const arabicEducationLevel = String(item.arabicEducationLevel || "").trim();
-    if (!emergencyContactName || !emergencyContactPhone) fail(400, "La personne à contacter en urgence et son téléphone sont obligatoires.");
-    if (isStudent && !schoolClass) fail(400, "La classe est obligatoire pour un élève.");
-    if (!arabicEducationLevel) fail(400, "Le niveau d'instruction en arabe est obligatoire.");
     const id = item.id || randomUUID();
     const zone = normalizedChoice(item.zone, zones, "Zone", true);
     const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
@@ -179,9 +176,9 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     if (user.role === "administratif" && scope !== "general") fail(403, "Activité non autorisée.");
     if (user.role === "surveillant_kourel" && scope !== "kourel") fail(403, "Activité non autorisée.");
     const id = item.id || randomUUID();
-    const zone = scope === "general" ? normalizedChoice(item.zone, activityZones, "Zone", true) : "";
     const kourel = scope === "kourel" ? normalizedChoice(user.role === "surveillant_kourel" ? user.kourel : item.kourel, kourels, "Kourel", true) : "Tous";
     const culturalSpace = scope === "general" ? normalizedChoice(item.culturalSpace, activityCulturalSpaces, "Espace culturel", true) : normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
+    const zone = scope === "general" ? culturalSpace === "Tous les espaces" ? "Toutes les zones" : normalizedChoice(item.zone, activityZones, "Zone", true) : "";
     await transaction(async (client) => {
       await client.query(
         `insert into activities (id,zone,type,scope,kourel,date,start_time,end_time,place,event_name,cultural_space,melodies,observation,created_by,updated_at)
