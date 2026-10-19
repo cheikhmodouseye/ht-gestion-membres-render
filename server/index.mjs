@@ -177,8 +177,11 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     if (user.role === "surveillant_kourel" && scope !== "kourel") fail(403, "Activité non autorisée.");
     const id = item.id || randomUUID();
     const kourel = scope === "kourel" ? normalizedChoice(user.role === "surveillant_kourel" ? user.kourel : item.kourel, kourels, "Kourel", true) : "Tous";
-    const culturalSpace = scope === "general" ? normalizedChoice(item.culturalSpace, activityCulturalSpaces, "Espace culturel", true) : normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
-    const zone = scope === "general" ? culturalSpace === "Tous les espaces" ? "Toutes les zones" : normalizedChoice(item.zone, activityZones, "Zone", true) : "";
+    const selectedCulturalSpace = scope === "general" ? normalizedChoice(item.culturalSpace, activityCulturalSpaces, "Espace culturel", true) : normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
+    const selectedZone = scope === "general" ? normalizedChoice(item.zone, activityZones, "Zone", true) : "";
+    const allDaaraMembers = scope === "general" && (selectedCulturalSpace === "Tous les espaces" || selectedZone === "Toutes les zones");
+    const culturalSpace = allDaaraMembers ? "Tous les espaces" : selectedCulturalSpace;
+    const zone = allDaaraMembers ? "Toutes les zones" : selectedZone;
     await transaction(async (client) => {
       await client.query(
         `insert into activities (id,zone,type,scope,kourel,date,start_time,end_time,place,event_name,cultural_space,melodies,observation,created_by,updated_at)
