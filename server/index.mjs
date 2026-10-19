@@ -163,7 +163,8 @@ app.post("/api/mutate", requireUser, async (request, response) => {
   if (body.action === "saveActivity") {
     allowed(user.role, ["admin", "administratif", "surveillant_kourel"]);
     const item = body.activity || {};
-    if (!item.type || !item.date) fail(400, "Type et date obligatoires.");
+    const activityType = String(item.type || "").trim();
+    if (!activityType || !item.date) fail(400, "Type et date obligatoires.");
     const scope = item.scope || "general";
     if (user.role === "administratif" && scope !== "general") fail(403, "Activité non autorisée.");
     if (user.role === "surveillant_kourel" && scope !== "kourel") fail(403, "Activité non autorisée.");
@@ -173,10 +174,10 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
     await transaction(async (client) => {
       await client.query(
-        `insert into activities (id,zone,type,scope,kourel,date,start_time,end_time,place,event_name,cultural_space,melodies,created_by,updated_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-         on conflict (id) do update set zone=excluded.zone,type=excluded.type,scope=excluded.scope,kourel=excluded.kourel,date=excluded.date,start_time=excluded.start_time,end_time=excluded.end_time,place=excluded.place,event_name=excluded.event_name,cultural_space=excluded.cultural_space,melodies=excluded.melodies,updated_at=excluded.updated_at`,
-        [id, zone, item.type, scope, kourel, item.date, item.startTime || "", item.endTime || "", item.place || "", item.eventName || "", culturalSpace, JSON.stringify(item.melodies || []), user.id, now],
+        `insert into activities (id,zone,type,scope,kourel,date,start_time,end_time,place,event_name,cultural_space,melodies,observation,created_by,updated_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         on conflict (id) do update set zone=excluded.zone,type=excluded.type,scope=excluded.scope,kourel=excluded.kourel,date=excluded.date,start_time=excluded.start_time,end_time=excluded.end_time,place=excluded.place,event_name=excluded.event_name,cultural_space=excluded.cultural_space,melodies=excluded.melodies,observation=excluded.observation,updated_at=excluded.updated_at`,
+        [id, zone, activityType, scope, kourel, item.date, item.startTime || "", item.endTime || "", item.place || "", item.eventName || "", culturalSpace, JSON.stringify(item.melodies || []), String(item.observation || "").trim(), user.id, now],
       );
       await client.query("delete from attendance where activity_id = $1", [id]);
       for (const [memberId, status] of Object.entries(body.attendance || {})) {

@@ -43,9 +43,11 @@ create table if not exists activities (
   id text primary key, zone text not null default '', type text not null, scope text not null,
   kourel text not null default 'Tous', date text not null, start_time text not null default '',
   end_time text not null default '', place text not null default '', event_name text not null default '',
-  cultural_space text not null default '', melodies jsonb not null default '[]'::jsonb,
+  cultural_space text not null default '', melodies jsonb not null default '[]'::jsonb, observation text not null default '',
   created_by text not null, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
+
+alter table activities add column if not exists observation text not null default '';
 
 create table if not exists attendance (
   id text primary key, activity_id text not null references activities(id) on delete cascade,

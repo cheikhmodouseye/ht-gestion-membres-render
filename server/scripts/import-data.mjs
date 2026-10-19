@@ -44,7 +44,7 @@ await transaction(async (client) => {
   await upsert(client, "activities", [
     ["id", "id"], ["zone", "zone", ""], ["type", "type"], ["scope", "scope", "general"], ["kourel", "kourel", "Tous"],
     ["date", "date"], ["start_time", "startTime", ""], ["end_time", "endTime", ""], ["place", "place", ""],
-    ["event_name", "eventName", ""], ["cultural_space", "culturalSpace", ""], ["melodies", "melodies", []],
+    ["event_name", "eventName", ""], ["cultural_space", "culturalSpace", ""], ["melodies", "melodies", []], ["observation", "observation", ""],
     ["created_by", "createdBy", "migration"], ["created_at", "createdAt", now], ["updated_at", "updatedAt", now],
   ], ["id"], data.activities);
 
