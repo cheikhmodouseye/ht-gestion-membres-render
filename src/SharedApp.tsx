@@ -103,7 +103,7 @@ function AccountsView() {
 }
 function ageFrom(date: string) { if (!date) return "-"; const birth = new Date(date); const now = new Date(); let age = now.getFullYear() - birth.getFullYear(); if (now < new Date(now.getFullYear(), birth.getMonth(), birth.getDate())) age--; return age; }
 function memberName(member: any) { return member ? `${member.prenom} ${member.nom}` : "Membre supprimé"; }
-function Field({ label, wide, value, ...props }: any) { return <label className={wide ? "field wide" : "field"}><span>{label}</span><Input defaultValue={value || ""} {...props} /></label>; }
+function Field({ label, wide, value, ...props }: any) { const editableProvisionalMatricule = props.name === "matricule" && String(value || "").startsWith("PROV-"); return <label className={wide ? "field wide" : "field"}><span>{label}</span><Input defaultValue={value || ""} {...props} readOnly={editableProvisionalMatricule ? false : props.readOnly} /></label>; }
 function SelectField({ label, options, value, wide, optionObjects, ...props }: any) { const valueProps = props.onChange ? { value: value || "" } : { defaultValue: value || "" }; return <label className={wide ? "field wide" : "field"}><span>{label}</span><NativeSelect {...valueProps} {...props}><NativeSelectOption value="">Sélectionner</NativeSelectOption>{options.map((option: any) => <NativeSelectOption key={optionObjects ? option.value : option} value={optionObjects ? option.value : option} disabled={optionObjects && option.disabled}>{optionObjects ? option.label : option}</NativeSelectOption>)}</NativeSelect></label>; }
 
 function activityScope(role: UserRole) {
