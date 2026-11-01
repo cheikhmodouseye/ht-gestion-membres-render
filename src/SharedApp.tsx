@@ -235,7 +235,8 @@ function MembersView({ data, mutate, busy, user }: any) {
       {(query || zoneFilter || kourelFilter || spaceFilter) && <Button variant="ghost" onClick={() => { setQuery(""); setZoneFilter(""); setKourelFilter(""); setSpaceFilter(""); }}>Réinitialiser</Button>}
     </div>
     <p className="filter-summary">{visible.length} membre(s) affiché(s) sur {data.members.length}</p>
-    <div className="list-lines">{visible.length ? visible.map((m: any) => <article className="member-line" key={m.id}>
+    <div className="list-lines">{visible.length ? visible.map((m: any, index: number) => <article className="member-line" key={m.id}>
+      <div className="member-index">{index + 1}</div>
       <div className="member-avatar">{m.prenom?.[0]}{m.nom?.[0]}</div>
       <div className="member-main"><strong>{m.prenom} {m.nom}</strong><span>{m.matricule} · {m.kourel || "Sans kourel"} · {m.culturalSpace || "Sans espace"} · {m.zone || "Zone non renseignée"}{m.isStudent ? m.schoolClass ? ` · Élève en ${m.schoolClass}` : " · Élève" : ""}</span></div>
       <div className="member-meta"><span>{m.birthDate ? `${ageFrom(m.birthDate)} ans` : "Âge non renseigné"}</span><b className={renewed.has(m.id) ? "status-ok" : "status-warn"}>{renewed.has(m.id) ? `Renouvelé ${currentYear}` : "À renouveler"}</b></div>
