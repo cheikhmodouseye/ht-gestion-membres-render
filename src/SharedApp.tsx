@@ -14,6 +14,7 @@ import { loadData, mutateData, type AppData } from "@/lib/data";
 import { apiRequest } from "@/lib/api";
 import { canManageDaara, canManageKourel, canManageMembers, canManageSocial, roleLabels, type UserRole } from "@/lib/roles";
 import { ALL_CULTURAL_SPACES, ALL_ZONES, canSeeMember, canSeeActivity, attendanceForRoster, membersForDaaraActivity } from "@/lib/scope";
+import { downloadXlsx } from "@/lib/xlsx";
 
 declare global {
   interface Document {
@@ -139,17 +140,108 @@ function Dashboard({ data, role }: { data: Data; role: UserRole }) {
       {canManageSocial(role) && <Metric label="Cotisations du mois" value={data.contributions.filter(item => item.month === currentMonth).length} detail={`${data.members.length} attendu(s)`} />}
       {canManageSocial(role) && <Metric label="Solde social" value={`${(income - expenses).toLocaleString("fr-FR")} F`} detail={`${income.toLocaleString("fr-FR")} F d'entrées`} danger={income - expenses < 0} />}
     </section>
+    {(role === "admin" || role === "administratif") && <MemberBreakdowns members={data.members} />}
     {role !== "social" && <Panel title="Activités récentes"><ActivityList data={data} limit={6} scope={activityScope(role)} /></Panel>}
     {role !== "social" && <DashboardStatistics data={data} role={role} />}
   </>;
 }
 
+function MemberBreakdowns({ members }: { members: any[] }) {
+  function distribution(key: "kourel" | "zone" | "culturalSpace", emptyLabel: string) {
+    const counts = new Map<string, number>();
+    for (const member of members) {
+      const label = String(member[key] || "").trim() || emptyLabel;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return Array.from(counts, ([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "fr"));
+  }
+  const groups = [
+    { title: "Par kourel", rows: distribution("kourel", "Sans kourel") },
+    { title: "Par zone", rows: distribution("zone", "Zone non renseignée") },
+    { title: "Par espace culturel", rows: distribution("culturalSpace", "Espace non renseigné") },
+  ];
+  return <Panel title="Répartition des membres"><div className="breakdown-grid">{groups.map(group => <section className="breakdown-card" key={group.title}><h3>{group.title}</h3>{group.rows.map(row => <div key={row.label}><span>{row.label}</span><strong>{row.count}</strong></div>)}</section>)}</div></Panel>;
+}
+
 function MembersView({ data, mutate, busy, user }: any) {
-  const [open, setOpen] = useState(false); const [editing, setEditing] = useState<any>(null); const [query, setQuery] = useState(""); const [isStudent, setIsStudent] = useState(false); const renewed = new Set(data.renewals.filter((r: any) => r.year === currentYear).map((r: any) => r.memberId)); const visible = data.members.filter((m: any) => `${m.matricule} ${m.prenom} ${m.nom} ${m.kourel}`.toLowerCase().includes(query.toLowerCase()));
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [query, setQuery] = useState("");
+  const [zoneFilter, setZoneFilter] = useState("");
+  const [kourelFilter, setKourelFilter] = useState("");
+  const [spaceFilter, setSpaceFilter] = useState("");
+  const [isStudent, setIsStudent] = useState(false);
+  const renewed = new Set(data.renewals.filter((r: any) => r.year === currentYear).map((r: any) => r.memberId));
+  const matchesFilter = (value: string, filter: string) => !filter || (filter === "__empty__" ? !value : value === filter);
+  const visible = data.members.filter((m: any) => {
+    const searchable = `${m.matricule} ${m.prenom} ${m.nom} ${m.kourel} ${m.zone} ${m.culturalSpace} ${m.phone} ${m.phone2}`.toLowerCase();
+    return searchable.includes(query.trim().toLowerCase())
+      && matchesFilter(m.zone || "", zoneFilter)
+      && matchesFilter(m.kourel || "", kourelFilter)
+      && matchesFilter(m.culturalSpace || "", spaceFilter);
+  });
   const zoneOptions = zones.map(zone => ({ value: zone, label: zone }));
+  const filterOptions = (key: "zone" | "kourel" | "culturalSpace", defaults: string[]) => Array.from(new Set([...defaults, ...data.members.map((member: any) => member[key]).filter(Boolean)])).sort((a, b) => a.localeCompare(b, "fr"));
+  const memberZones = filterOptions("zone", zones);
+  const memberKourels = filterOptions("kourel", kourels);
+  const memberSpaces = filterOptions("culturalSpace", spaces);
+  function exportVisibleMembers() {
+    const headers = ["N°", "Matricule", "Prénom", "Nom", "Sexe", "Date de naissance", "Âge", "Adresse", "Téléphone 1", "Téléphone 2", "E-mail", "Contact d’urgence", "Téléphone urgence", "Élève", "Classe", "Niveau Madjalis", "Profession", "Secteur Daara", "Secteur Grand Magal", "Espace culturel", "Kourel", "Zone", "Première inscription", `Renouvelé ${currentYear}`];
+    const rows = visible.map((member: any, index: number) => [index + 1, member.matricule, member.prenom, member.nom, member.sexe, member.birthDate, member.birthDate ? ageFrom(member.birthDate) : "", member.address, member.phone, member.phone2, member.email, member.emergencyContactName, member.emergencyContactPhone, member.isStudent ? "Oui" : "Non", member.schoolClass, member.arabicEducationLevel, member.profession, member.daaraSector, member.magalSector, member.culturalSpace, member.kourel, member.zone, member.registrationDate, renewed.has(member.id) ? "Oui" : "Non"]);
+    downloadXlsx(`membres-filtres-${today}.xlsx`, "Membres", [headers, ...rows]);
+  }
   function start(member?: any) { setEditing(member || { registrationDate: today }); setIsStudent(Boolean(member?.isStudent)); setOpen(true); }
   async function submit(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); const member: any = Object.fromEntries(form.entries()); member.id = editing?.id; member.isStudent = isStudent; if (await mutate({ action: "saveMember", member, renewal: { year: Number(form.get("renewalYear")), date: form.get("renewalDate") } }, editing?.id ? "Informations actualisées" : "Membre inscrit")) setOpen(false); }
-  return <Panel title="Liste des membres" action={<Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button onClick={() => start()}><Plus />Ajouter</Button></DialogTrigger><DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{editing?.id ? "Actualiser le membre" : "Inscrire un membre"}</DialogTitle></DialogHeader><form className="form-grid" onSubmit={submit}><Field name="matricule" label="Matricule" value={editing?.matricule} required readOnly={Boolean(editing?.id)} /><Field name="prenom" label="Prénom" value={editing?.prenom} required /><Field name="nom" label="Nom" value={editing?.nom} required /><SelectField name="sexe" label="Sexe" value={editing?.sexe} options={["Femme", "Homme"]} /><Field name="birthDate" label="Date de naissance" type="date" value={editing?.birthDate} /><Field name="phone" label="Téléphone 1" type="tel" value={editing?.phone} /><Field name="phone2" label="Téléphone 2" type="tel" value={editing?.phone2} /><Field name="email" label="E-mail" type="email" value={editing?.email} /><Field name="address" label="Adresse" value={editing?.address} wide /><Field name="emergencyContactName" label="Personne à contacter en cas d’urgence" value={editing?.emergencyContactName} wide /><Field name="emergencyContactPhone" label="Téléphone de la personne à contacter" type="tel" value={editing?.emergencyContactPhone} /><Field name="arabicEducationLevel" label="Niveau Madjalis" value={editing?.arabicEducationLevel} /><label className="check-field wide"><Checkbox checked={isStudent} onCheckedChange={(checked) => setIsStudent(checked === true)} /> Le membre est élève</label>{isStudent && <Field name="schoolClass" label="Classe de l’élève" value={editing?.schoolClass} />}<SelectField name="zone" label="Zone" value={editing?.zone || user.zone} options={zoneOptions} optionObjects required /><Field name="profession" label="Profession" value={editing?.profession} /><Field name="daaraSector" label="Secteur dans la Daara" value={editing?.daaraSector} /><Field name="magalSector" label="Secteur au Grand Magal" value={editing?.magalSector} /><SelectField name="culturalSpace" label="Espace culturel" value={editing?.culturalSpace} options={spaces} /><SelectField name="kourel" label="Kourel" value={editing?.kourel} options={kourels} /><Field name="registrationDate" label="Première inscription" type="date" value={editing?.registrationDate || today} /><Field name="renewalYear" label="Année de renouvellement" type="number" value={currentYear} /><Field name="renewalDate" label="Date du renouvellement" type="date" value={today} /><Button className="wide" type="submit" disabled={busy}><Save />Enregistrer</Button></form></DialogContent></Dialog>}><div className="toolbar"><Input placeholder="Rechercher par matricule, nom ou kourel" value={query} onChange={e => setQuery(e.target.value)} /></div><div className="list-lines">{visible.length ? visible.map((m: any) => <article className="member-line" key={m.id}><div className="member-avatar">{m.prenom?.[0]}{m.nom?.[0]}</div><div className="member-main"><strong>{m.prenom} {m.nom}</strong><span>{m.matricule} · {m.kourel || "Sans kourel"} · {m.culturalSpace || "Sans espace"} · {m.zone || "Zone non renseignée"}{m.isStudent ? ` · Élève en ${m.schoolClass}` : ""}</span></div><div className="member-meta"><span>{ageFrom(m.birthDate)} ans</span><b className={renewed.has(m.id) ? "status-ok" : "status-warn"}>{renewed.has(m.id) ? `Renouvelé ${currentYear}` : "À renouveler"}</b></div><div className="row-actions"><Button variant="outline" size="sm" onClick={() => start(m)}>Modifier</Button><Button variant="ghost" size="icon" aria-label="Supprimer" onClick={() => confirm("Supprimer ce membre ?") && void mutate({ action: "delete", entity: "member", id: m.id }, "Membre supprimé")}><Trash2 /></Button></div></article>) : <Empty text="Aucun membre trouvé." />}</div></Panel>;
+  return <Panel title="Liste des membres" action={<div className="panel-actions">
+    <Button variant="outline" onClick={exportVisibleMembers} disabled={!visible.length}><Download />Exporter Excel ({visible.length})</Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild><Button onClick={() => start()}><Plus />Ajouter</Button></DialogTrigger>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader><DialogTitle>{editing?.id ? "Actualiser le membre" : "Inscrire un membre"}</DialogTitle></DialogHeader>
+        <form className="form-grid" onSubmit={submit}>
+          <Field name="matricule" label="Matricule" value={editing?.matricule} required readOnly={Boolean(editing?.id)} />
+          <Field name="prenom" label="Prénom" value={editing?.prenom} required />
+          <Field name="nom" label="Nom" value={editing?.nom} required />
+          <SelectField name="sexe" label="Sexe" value={editing?.sexe} options={["Femme", "Homme"]} />
+          <Field name="birthDate" label="Date de naissance" type="date" value={editing?.birthDate} />
+          <Field name="phone" label="Téléphone 1" type="tel" value={editing?.phone} />
+          <Field name="phone2" label="Téléphone 2" type="tel" value={editing?.phone2} />
+          <Field name="email" label="E-mail" type="email" value={editing?.email} />
+          <Field name="address" label="Adresse" value={editing?.address} wide />
+          <Field name="emergencyContactName" label="Personne à contacter en cas d’urgence" value={editing?.emergencyContactName} wide />
+          <Field name="emergencyContactPhone" label="Téléphone de la personne à contacter" type="tel" value={editing?.emergencyContactPhone} />
+          <Field name="arabicEducationLevel" label="Niveau Madjalis" value={editing?.arabicEducationLevel} />
+          <label className="check-field wide"><Checkbox checked={isStudent} onCheckedChange={(checked) => setIsStudent(checked === true)} /> Le membre est élève</label>
+          {isStudent && <Field name="schoolClass" label="Classe de l’élève" value={editing?.schoolClass} />}
+          <SelectField name="zone" label="Zone" value={editing?.zone || user.zone} options={zoneOptions} optionObjects required />
+          <Field name="profession" label="Profession" value={editing?.profession} />
+          <Field name="daaraSector" label="Secteur dans la Daara" value={editing?.daaraSector} />
+          <Field name="magalSector" label="Secteur au Grand Magal" value={editing?.magalSector} />
+          <SelectField name="culturalSpace" label="Espace culturel" value={editing?.culturalSpace} options={spaces} />
+          <SelectField name="kourel" label="Kourel" value={editing?.kourel} options={kourels} />
+          <Field name="registrationDate" label="Première inscription" type="date" value={editing?.registrationDate || today} />
+          <Field name="renewalYear" label="Année de renouvellement" type="number" value={currentYear} />
+          <Field name="renewalDate" label="Date du renouvellement" type="date" value={today} />
+          <Button className="wide" type="submit" disabled={busy}><Save />Enregistrer</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  </div>}>
+    <div className="toolbar member-filters">
+      <Input placeholder="Rechercher par matricule, nom, téléphone…" value={query} onChange={event => setQuery(event.target.value)} />
+      <NativeSelect value={kourelFilter} onChange={event => setKourelFilter(event.target.value)}><NativeSelectOption value="">Tous les kourels</NativeSelectOption><NativeSelectOption value="__empty__">Sans kourel</NativeSelectOption>{memberKourels.map(value => <NativeSelectOption key={value} value={value}>{value}</NativeSelectOption>)}</NativeSelect>
+      <NativeSelect value={zoneFilter} onChange={event => setZoneFilter(event.target.value)}><NativeSelectOption value="">Toutes les zones</NativeSelectOption><NativeSelectOption value="__empty__">Zone non renseignée</NativeSelectOption>{memberZones.map(value => <NativeSelectOption key={value} value={value}>{value}</NativeSelectOption>)}</NativeSelect>
+      <NativeSelect value={spaceFilter} onChange={event => setSpaceFilter(event.target.value)}><NativeSelectOption value="">Tous les espaces</NativeSelectOption><NativeSelectOption value="__empty__">Espace non renseigné</NativeSelectOption>{memberSpaces.map(value => <NativeSelectOption key={value} value={value}>{value}</NativeSelectOption>)}</NativeSelect>
+      {(query || zoneFilter || kourelFilter || spaceFilter) && <Button variant="ghost" onClick={() => { setQuery(""); setZoneFilter(""); setKourelFilter(""); setSpaceFilter(""); }}>Réinitialiser</Button>}
+    </div>
+    <p className="filter-summary">{visible.length} membre(s) affiché(s) sur {data.members.length}</p>
+    <div className="list-lines">{visible.length ? visible.map((m: any) => <article className="member-line" key={m.id}>
+      <div className="member-avatar">{m.prenom?.[0]}{m.nom?.[0]}</div>
+      <div className="member-main"><strong>{m.prenom} {m.nom}</strong><span>{m.matricule} · {m.kourel || "Sans kourel"} · {m.culturalSpace || "Sans espace"} · {m.zone || "Zone non renseignée"}{m.isStudent ? m.schoolClass ? ` · Élève en ${m.schoolClass}` : " · Élève" : ""}</span></div>
+      <div className="member-meta"><span>{m.birthDate ? `${ageFrom(m.birthDate)} ans` : "Âge non renseigné"}</span><b className={renewed.has(m.id) ? "status-ok" : "status-warn"}>{renewed.has(m.id) ? `Renouvelé ${currentYear}` : "À renouveler"}</b></div>
+      <div className="row-actions"><Button variant="outline" size="sm" onClick={() => start(m)}>Modifier</Button><Button variant="ghost" size="icon" aria-label="Supprimer" onClick={() => confirm("Supprimer ce membre ?") && void mutate({ action: "delete", entity: "member", id: m.id }, "Membre supprimé")}><Trash2 /></Button></div>
+    </article>) : <Empty text="Aucun membre ne correspond aux filtres." />}</div>
+  </Panel>;
 }
 
 function ActivitiesView({ data, mutate, busy, role, user }: any) {
