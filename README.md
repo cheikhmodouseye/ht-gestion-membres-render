@@ -19,9 +19,9 @@ Les utilisateurs se connectent avec un identifiant, sans adresse e-mail. Seul l'
 Roles disponibles :
 
 - `admin` : acces global et gestion des comptes.
-- `administratif` : membres de sa zone et activites de la Daara.
-- `social` : cotisations, evenements sociaux et caisse.
-- `surveillant_kourel` : repetitions et prestations de son kourel.
+- `administratif` : membres et activites de la Daara, avec acces complet, par zone ou par espace culturel.
+- `social` : cotisations, evenements sociaux et caisse, avec acces complet, par zone ou par espace culturel.
+- `surveillant_kourel` : repetitions et prestations, avec acces complet a tous les kourels ou limite a un seul kourel.
 
 Les autorisations sont verifiees dans l'API, pas seulement dans l'interface.
 

@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/api";
 import type { UserRole } from "@/lib/roles";
+import type { AccessLevel } from "@/lib/scope";
 
-type AppUser = { id: string; identifier: string; name: string; role: UserRole; zone: string; kourel: string };
+type AppUser = { id: string; identifier: string; name: string; role: UserRole; accessScope: AccessLevel; zone: string; culturalSpace: string; kourel: string };
 const inactivityTimeoutMs = 5 * 60 * 1000;
 
 export default function App() {
@@ -53,7 +54,7 @@ export default function App() {
 
   if (checking) return <main className="signin"><LoaderCircle className="animate-spin" /></main>;
   if (!user) return <AuthScreen message={authMessage} onAuthenticated={(authenticatedUser) => { setAuthMessage(""); setUser(authenticatedUser); }} />;
-  return <SharedApp key={`${user.id}:${user.role}:${user.zone}:${user.kourel}`} user={user} onSignOut={() => void signOut()} />;
+  return <SharedApp key={`${user.id}:${user.role}:${user.accessScope}:${user.zone}:${user.culturalSpace}:${user.kourel}`} user={user} onSignOut={() => void signOut()} />;
 }
 
 function AuthScreen({ message: initialMessage, onAuthenticated }: { message: string; onAuthenticated: (user: AppUser) => void }) {

@@ -6,6 +6,7 @@ import { createSession, destroySession, hashPassword, publicUser, requireUser, v
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const roles = new Set(["admin", "administratif", "social", "surveillant_kourel"]);
+const accessScopes = new Set(["all", "zone", "cultural_space", "kourel"]);
 const zones = new Set(["Diakhaye", "Keur Massar centre", "Tivaoune Peulh-Apix", "Yeumbeul-Malika"]);
 const kourels = new Set(["Nourou Dareyni", "Mafatikhoul Bisri", "Adolescent", "Dialibatou Marakhib"]);
 const culturalSpaces = new Set(["ECH1", "ECH2", "ECF1", "ECF2", "ECA"]);
@@ -39,11 +40,17 @@ function normalizedChoice(value, choices, label, required = false) {
 }
 
 function assignments(role, source = {}) {
-  const result = {
-    zone: role === "administratif" ? normalizedChoice(source.zone, zones, "Zone", true) : "",
-    kourel: role === "surveillant_kourel" ? normalizedChoice(source.kourel, kourels, "Kourel", true) : "",
+  if (role === "admin") return { accessScope: "all", zone: "", culturalSpace: "", kourel: "" };
+  const accessScope = String(source.accessScope || "all");
+  if (!accessScopes.has(accessScope)) fail(400, "Niveau d'accès invalide.");
+  const allowedScopes = role === "surveillant_kourel" ? new Set(["all", "kourel"]) : new Set(["all", "zone", "cultural_space"]);
+  if (!allowedScopes.has(accessScope)) fail(400, "Ce niveau d'accès ne correspond pas au rôle sélectionné.");
+  return {
+    accessScope,
+    zone: accessScope === "zone" ? normalizedChoice(source.zone, zones, "Zone", true) : "",
+    culturalSpace: accessScope === "cultural_space" ? normalizedChoice(source.culturalSpace, culturalSpaces, "Espace culturel", true) : "",
+    kourel: accessScope === "kourel" ? normalizedChoice(source.kourel, kourels, "Kourel", true) : "",
   };
-  return result;
 }
 
 const maps = {
@@ -61,16 +68,46 @@ function camelRows(table, rows = []) {
 }
 
 function canSeeMember(user, member) {
-  if (user.role === "admin" || user.role === "social" || user.role === "administratif") return true;
-  if (user.role === "surveillant_kourel") return Boolean(user.kourel) && member.kourel === user.kourel;
+  const accessScope = user.role === "admin" ? "all" : user.access_scope || (user.role === "surveillant_kourel" ? "kourel" : "all");
+  if (accessScope === "all") return true;
+  if (accessScope === "zone") return Boolean(user.zone) && member.zone === user.zone;
+  if (accessScope === "cultural_space") return Boolean(user.cultural_space) && member.cultural_space === user.cultural_space;
+  if (accessScope === "kourel") return Boolean(user.kourel) && member.kourel === user.kourel;
   return false;
 }
 
 function canSeeActivity(user, activity) {
   if (user.role === "admin") return true;
-  if (user.role === "administratif") return activity.scope === "general";
-  if (user.role === "surveillant_kourel") return Boolean(user.kourel) && activity.scope === "kourel" && activity.kourel === user.kourel;
+  const accessScope = user.access_scope || (user.role === "surveillant_kourel" ? "kourel" : "all");
+  if (user.role === "administratif" && activity.scope === "general") {
+    if (accessScope === "all") return true;
+    if (accessScope === "zone") return Boolean(user.zone) && (activity.zone === user.zone || activity.zone === "Toutes les zones");
+    if (accessScope === "cultural_space") return Boolean(user.cultural_space) && (activity.cultural_space === user.cultural_space || activity.cultural_space === "Tous les espaces");
+  }
+  if (user.role === "surveillant_kourel" && activity.scope === "kourel") {
+    return accessScope === "all" || (accessScope === "kourel" && Boolean(user.kourel) && activity.kourel === user.kourel);
+  }
   return false;
+}
+
+function canManageActivity(user, activity) {
+  if (user.role === "admin") return true;
+  const accessScope = user.access_scope || (user.role === "surveillant_kourel" ? "kourel" : "all");
+  if (user.role === "administratif" && activity.scope === "general") {
+    if (accessScope === "all") return true;
+    if (accessScope === "zone") return Boolean(user.zone) && activity.zone === user.zone;
+    if (accessScope === "cultural_space") return Boolean(user.cultural_space) && activity.cultural_space === user.cultural_space;
+  }
+  if (user.role === "surveillant_kourel" && activity.scope === "kourel") {
+    return accessScope === "all" || (accessScope === "kourel" && Boolean(user.kourel) && activity.kourel === user.kourel);
+  }
+  return false;
+}
+
+async function visibleMember(client, user, memberId) {
+  const result = await client.query("select id,zone,cultural_space,kourel from members where id = $1", [memberId]);
+  if (!result.rowCount || !canSeeMember(user, result.rows[0])) fail(403, "Membre hors de votre affectation.");
+  return result.rows[0];
 }
 
 async function loadData(user) {
@@ -87,8 +124,8 @@ async function loadData(user) {
     renewals: camelRows("renewals", raw.renewals.filter((row) => memberIds.has(row.member_id))),
     activities: camelRows("activities", activities),
     attendance: camelRows("attendance", raw.attendance.filter((row) => memberIds.has(row.member_id) && activityIds.has(row.activity_id))),
-    contributions: socialAccess ? camelRows("social_contributions", raw.social_contributions) : [],
-    socialEvents: socialAccess ? camelRows("social_events", raw.social_events) : [],
+    contributions: socialAccess ? camelRows("social_contributions", raw.social_contributions.filter((row) => memberIds.has(row.member_id))) : [],
+    socialEvents: socialAccess ? camelRows("social_events", raw.social_events.filter((row) => memberIds.has(row.member_id))) : [],
     cashMovements: socialAccess ? camelRows("cash_movements", raw.cash_movements) : [],
   };
 }
@@ -149,7 +186,9 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     const zone = normalizedChoice(item.zone, zones, "Zone", true);
     const culturalSpace = normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
     const kourel = normalizedChoice(item.kourel, kourels, "Kourel");
+    if (!canSeeMember(user, { zone, cultural_space: culturalSpace, kourel })) fail(403, "Le membre doit rester dans votre affectation.");
     await transaction(async (client) => {
+      if (item.id) await visibleMember(client, user, id);
       await client.query(
         `insert into members (id,zone,matricule,nom,prenom,sexe,birth_date,address,phone,phone2,email,emergency_contact_name,emergency_contact_phone,is_student,school_class,arabic_education_level,profession,daara_sector,magal_sector,cultural_space,kourel,registration_date,created_by,updated_at)
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
@@ -176,13 +215,21 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     if (user.role === "administratif" && scope !== "general") fail(403, "Activité non autorisée.");
     if (user.role === "surveillant_kourel" && scope !== "kourel") fail(403, "Activité non autorisée.");
     const id = item.id || randomUUID();
-    const kourel = scope === "kourel" ? normalizedChoice(user.role === "surveillant_kourel" ? user.kourel : item.kourel, kourels, "Kourel", true) : "Tous";
-    const selectedCulturalSpace = scope === "general" ? normalizedChoice(item.culturalSpace, activityCulturalSpaces, "Espace culturel", true) : normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
-    const selectedZone = scope === "general" ? normalizedChoice(item.zone, activityZones, "Zone", true) : "";
-    const allDaaraMembers = scope === "general" && (selectedCulturalSpace === "Tous les espaces" || selectedZone === "Toutes les zones");
+    const restrictedKourel = user.role === "surveillant_kourel" && user.access_scope === "kourel";
+    const kourel = scope === "kourel" ? normalizedChoice(restrictedKourel ? user.kourel : item.kourel, kourels, "Kourel", true) : "Tous";
+    const requestedCulturalSpace = scope === "general" ? normalizedChoice(item.culturalSpace, activityCulturalSpaces, "Espace culturel", true) : normalizedChoice(item.culturalSpace, culturalSpaces, "Espace culturel");
+    const requestedZone = scope === "general" ? normalizedChoice(item.zone, activityZones, "Zone", true) : "";
+    const selectedCulturalSpace = user.role === "administratif" && user.access_scope === "cultural_space" ? user.cultural_space : requestedCulturalSpace;
+    const selectedZone = user.role === "administratif" && user.access_scope === "zone" ? user.zone : requestedZone;
+    const fullDaaraAccess = user.role === "admin" || user.access_scope === "all";
+    const allDaaraMembers = scope === "general" && fullDaaraAccess && (selectedCulturalSpace === "Tous les espaces" || selectedZone === "Toutes les zones");
     const culturalSpace = allDaaraMembers ? "Tous les espaces" : selectedCulturalSpace;
     const zone = allDaaraMembers ? "Toutes les zones" : selectedZone;
     await transaction(async (client) => {
+      if (item.id) {
+        const existing = await client.query("select * from activities where id = $1", [id]);
+        if (!existing.rowCount || !canManageActivity(user, existing.rows[0])) fail(403, "Activité hors de votre affectation.");
+      }
       await client.query(
         `insert into activities (id,zone,type,scope,kourel,date,start_time,end_time,place,event_name,cultural_space,melodies,observation,created_by,updated_at)
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
@@ -192,8 +239,7 @@ app.post("/api/mutate", requireUser, async (request, response) => {
       await client.query("delete from attendance where activity_id = $1", [id]);
       for (const [memberId, status] of Object.entries(body.attendance || {})) {
         if (!["present", "late", "absent", "justified"].includes(String(status))) fail(400, "Statut de présence invalide.");
-        const member = await client.query("select zone,kourel from members where id = $1", [memberId]);
-        if (!member.rowCount || !canSeeMember(user, member.rows[0])) fail(403, "Membre hors de votre affectation.");
+        await visibleMember(client, user, memberId);
         await client.query("insert into attendance (id,activity_id,member_id,status,updated_by,updated_at) values ($1,$2,$3,$4,$5,$6)", [randomUUID(), id, memberId, String(status), user.id, now]);
       }
     });
@@ -204,10 +250,16 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     allowed(user.role, ["admin", "social"]);
     const month = String(body.month || "");
     if (!/^\d{4}-\d{2}$/.test(month)) fail(400, "Mois invalide.");
-    const memberIds = body.action === "toggleContribution" ? (body.paid ? [String(body.memberId || "")] : []) : [...new Set((body.memberIds || []).map(String).filter(Boolean))];
+    const targetMemberId = String(body.memberId || "");
+    const memberIds = body.action === "toggleContribution" ? (body.paid ? [targetMemberId] : []) : [...new Set((body.memberIds || []).map(String).filter(Boolean))];
     await transaction(async (client) => {
-      if (body.action === "toggleContribution") await client.query("delete from social_contributions where member_id = $1 and month = $2", [String(body.memberId || ""), month]);
-      else await client.query("delete from social_contributions where month = $1", [month]);
+      const membersResult = await client.query("select id,zone,cultural_space,kourel from members");
+      const allowedMemberIds = membersResult.rows.filter((member) => canSeeMember(user, member)).map((member) => member.id);
+      const allowedSet = new Set(allowedMemberIds);
+      const checkedIds = body.action === "toggleContribution" ? [targetMemberId] : memberIds;
+      if (checkedIds.some((memberId) => !allowedSet.has(memberId))) fail(403, "Un membre est hors de votre affectation.");
+      if (body.action === "toggleContribution") await client.query("delete from social_contributions where member_id = $1 and month = $2", [targetMemberId, month]);
+      else await client.query("delete from social_contributions where month = $1 and member_id = any($2::text[])", [month, allowedMemberIds]);
       for (const memberId of memberIds) {
         await client.query(
           `insert into social_contributions (id,member_id,month,amount,paid_date,created_by,updated_at) values ($1,$2,$3,1000,$4,$5,$6)
@@ -226,7 +278,7 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     const type = String(item.type || "");
     const date = String(item.date || "");
     const expenseAmount = Number(item.expenseAmount || 0);
-    if (!(await pool.query("select 1 from members where id = $1", [memberId])).rowCount) fail(400, "Sélectionnez le membre concerné.");
+    await visibleMember(pool, user, memberId);
     if (!["Baptême", "Mariage", "Décès", "Décès d'un proche"].includes(type)) fail(400, "Nature de l'évènement invalide.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail(400, "Date de l'évènement invalide.");
     if (!Number.isFinite(expenseAmount) || expenseAmount < 0) fail(400, "Montant remis invalide.");
@@ -261,7 +313,13 @@ app.post("/api/mutate", requireUser, async (request, response) => {
     const id = String(body.id || "");
     if (target[0] === "activities" && user.role !== "admin") {
       const record = await pool.query("select * from activities where id = $1", [id]);
-      if (!record.rowCount || !canSeeActivity(user, record.rows[0])) fail(403, "Activité hors de votre affectation.");
+      if (!record.rowCount || !canManageActivity(user, record.rows[0])) fail(403, "Activité hors de votre affectation.");
+    }
+    if (target[0] === "members" && user.role !== "admin") await visibleMember(pool, user, id);
+    if (target[0] === "social_events" && user.role !== "admin") {
+      const record = await pool.query("select member_id from social_events where id = $1", [id]);
+      if (!record.rowCount) fail(404, "Évènement introuvable.");
+      await visibleMember(pool, user, record.rows[0].member_id);
     }
     await pool.query(`delete from ${target[0]} where id = $1`, [id]);
     return response.json({ ok: true });
@@ -274,8 +332,8 @@ app.post("/api/admin/users", requireUser, async (request, response) => {
   allowed(request.user.role, ["admin"]);
   const body = request.body || {};
   if (body.action === "list") {
-    const result = await pool.query("select id,identifier,full_name,role,zone,kourel,created_at from app_users where active = true order by identifier");
-    return response.json({ users: result.rows.map((row) => ({ id: row.id, identifier: row.identifier, fullName: row.full_name, role: row.role, zone: row.zone, kourel: row.kourel, createdAt: row.created_at, isCurrent: row.id === request.user.id })) });
+    const result = await pool.query("select id,identifier,full_name,role,access_scope,zone,cultural_space,kourel,created_at from app_users where active = true order by identifier");
+    return response.json({ users: result.rows.map((row) => ({ id: row.id, identifier: row.identifier, fullName: row.full_name, role: row.role, accessScope: row.access_scope, zone: row.zone, culturalSpace: row.cultural_space, kourel: row.kourel, createdAt: row.created_at, isCurrent: row.id === request.user.id })) });
   }
   if (body.action === "create") {
     const identifier = normalizedIdentifier(body.identifier);
@@ -284,7 +342,7 @@ app.post("/api/admin/users", requireUser, async (request, response) => {
     if (password.length < 8) fail(400, "Le mot de passe doit contenir au moins 8 caractères.");
     if (!roles.has(role)) fail(400, "Rôle invalide.");
     const scope = assignments(role, body);
-    const result = await pool.query("insert into app_users (identifier,password_hash,full_name,role,zone,kourel) values ($1,$2,$3,$4,$5,$6) returning id", [identifier, await hashPassword(password), String(body.fullName || "").trim(), role, scope.zone, scope.kourel]);
+    const result = await pool.query("insert into app_users (identifier,password_hash,full_name,role,access_scope,zone,cultural_space,kourel) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id", [identifier, await hashPassword(password), String(body.fullName || "").trim(), role, scope.accessScope, scope.zone, scope.culturalSpace, scope.kourel]);
     return response.json({ ok: true, id: result.rows[0].id });
   }
   if (body.action === "update") {
@@ -293,7 +351,7 @@ app.post("/api/admin/users", requireUser, async (request, response) => {
     if (!roles.has(role)) fail(400, "Rôle invalide.");
     if (id === request.user.id && role !== "admin") fail(400, "Votre propre compte doit rester administrateur.");
     const scope = assignments(role, body);
-    await pool.query("update app_users set full_name=$1,role=$2,zone=$3,kourel=$4,updated_at=now() where id=$5", [String(body.fullName || "").trim(), role, scope.zone, scope.kourel, id]);
+    await pool.query("update app_users set full_name=$1,role=$2,access_scope=$3,zone=$4,cultural_space=$5,kourel=$6,updated_at=now() where id=$7", [String(body.fullName || "").trim(), role, scope.accessScope, scope.zone, scope.culturalSpace, scope.kourel, id]);
     if (String(body.password || "")) {
       if (String(body.password).length < 8) fail(400, "Le mot de passe doit contenir au moins 8 caractères.");
       await pool.query("update app_users set password_hash=$1,updated_at=now() where id=$2", [await hashPassword(String(body.password)), id]);

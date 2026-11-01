@@ -46,7 +46,7 @@ export async function requireUser(request, response, next) {
     const token = parseCookies(request.headers.cookie).ht_session;
     if (!token) return response.status(401).json({ error: "Connexion requise." });
     const result = await pool.query(
-      `select u.id, u.identifier, u.full_name, u.role, u.zone, u.kourel
+      `select u.id, u.identifier, u.full_name, u.role, u.access_scope, u.zone, u.cultural_space, u.kourel
        from sessions s join app_users u on u.id = s.user_id
        where s.token_hash = $1 and s.expires_at > now() and u.active = true`,
       [tokenHash(token)],
@@ -65,7 +65,9 @@ export function publicUser(user) {
     identifier: user.identifier,
     name: user.full_name || user.identifier,
     role: user.role,
+    accessScope: user.access_scope || "all",
     zone: user.zone || "",
+    culturalSpace: user.cultural_space || "",
     kourel: user.kourel || "",
   };
 }

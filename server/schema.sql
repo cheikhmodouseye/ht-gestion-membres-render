@@ -6,12 +6,17 @@ create table if not exists app_users (
   password_hash text not null,
   full_name text not null default '',
   role text not null check (role in ('admin', 'administratif', 'social', 'surveillant_kourel')),
+  access_scope text not null default 'all',
   zone text not null default '',
+  cultural_space text not null default '',
   kourel text not null default '',
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table app_users add column if not exists access_scope text not null default 'all';
+alter table app_users add column if not exists cultural_space text not null default '';
 
 create table if not exists sessions (
   token_hash text primary key,
@@ -83,6 +88,7 @@ create table if not exists cash_movements (
 );
 
 create index if not exists idx_members_zone on members(zone);
+create index if not exists idx_members_cultural_space on members(cultural_space);
 create index if not exists idx_members_kourel on members(kourel);
 create index if not exists idx_activities_scope_date on activities(scope, date);
 create index if not exists idx_attendance_activity_member on attendance(activity_id, member_id);

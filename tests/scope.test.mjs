@@ -2,19 +2,26 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ALL_CULTURAL_SPACES, ALL_ZONES, canSeeMember, canSeeActivity, attendanceForRoster, membersForDaaraActivity } from '../src/lib/scope.ts';
 
-test('le profil administratif couvre les zones et le surveillant reste limité au kourel', () => {
-  const zone = {role:'administratif',zone:'A',kourel:''};
-  const kourel = {role:'surveillant_kourel',zone:'',kourel:'K1'};
+test('les profils peuvent être limités à une zone, un espace ou un kourel', () => {
+  const zone = {role:'administratif',accessScope:'zone',zone:'A',culturalSpace:'',kourel:''};
+  const space = {role:'social',accessScope:'cultural_space',zone:'',culturalSpace:'ECH1',kourel:''};
+  const kourel = {role:'surveillant_kourel',accessScope:'kourel',zone:'',culturalSpace:'',kourel:'K1'};
+  const full = {role:'surveillant_kourel',accessScope:'all',zone:'',culturalSpace:'',kourel:''};
   assert.equal(canSeeMember(zone,{zone:'A',kourel:'K2'}),true);
-  assert.equal(canSeeMember(zone,{zone:'B',kourel:'K1'}),true);
+  assert.equal(canSeeMember(zone,{zone:'B',kourel:'K1'}),false);
+  assert.equal(canSeeMember(space,{culturalSpace:'ECH1'}),true);
+  assert.equal(canSeeMember(space,{cultural_space:'ECH2'}),false);
   assert.equal(canSeeMember(kourel,{zone:'B',kourel:'K1'}),true);
   assert.equal(canSeeMember(kourel,{zone:'A',kourel:'K2'}),false);
-  assert.equal(canSeeMember({...zone,zone:''},{zone:''}),true);
+  assert.equal(canSeeMember(full,{zone:'A',kourel:'K2'}),true);
+  assert.equal(canSeeMember({...zone,zone:''},{zone:''}),false);
   assert.equal(canSeeMember({...kourel,kourel:' '},{kourel:' '}),false);
   assert.equal(canSeeActivity(zone,{scope:'general',zone:'A'}),true);
-  assert.equal(canSeeActivity(zone,{scope:'general',zone:'B'}),true);
+  assert.equal(canSeeActivity(zone,{scope:'general',zone:'B'}),false);
+  assert.equal(canSeeActivity(zone,{scope:'general',zone:ALL_ZONES}),true);
   assert.equal(canSeeActivity(zone,{scope:'kourel',zone:'A',kourel:'K1'}),false);
   assert.equal(canSeeActivity(kourel,{scope:'kourel',kourel:'K2'}),false);
+  assert.equal(canSeeActivity(full,{scope:'kourel',kourel:'K2'}),true);
 });
 
 test('changer de sélection exclut les anciennes présences du pointage', () => {
